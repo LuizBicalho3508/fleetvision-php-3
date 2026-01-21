@@ -1,297 +1,308 @@
 <?php
-//usuarios.php
-$tenant_id = $_SESSION['tenant_id'];
-$isSuperAdmin = ($_SESSION['user_role'] === 'superadmin');
-
-// URL da API
-$baseUrl = str_replace('/index.php', '', $_SERVER['SCRIPT_NAME']);
-if($baseUrl == '/') $baseUrl = ''; 
-$apiUrl = $baseUrl . '/api_dados.php';
-
-try {
-    // Listas auxiliares (Filiais e Clientes)
-    $branches = $pdo->query("SELECT id, name FROM saas_branches WHERE tenant_id = $tenant_id ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
-    $customers = $pdo->query("SELECT id, name FROM saas_customers WHERE tenant_id = $tenant_id ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Lista de Empresas (Apenas para SuperAdmin)
-    $tenantsList = [];
-    if ($isSuperAdmin) {
-        $tenantsList = $pdo->query("SELECT id, name FROM saas_tenants ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-    }
-} catch (Exception $e) { $branches = []; $customers = []; $tenantsList = []; }
+// usuarios.php - Gestão de Acesso com Indicador Financeiro
+if (session_status() === PHP_SESSION_NONE) {}
+if (!isset($_SESSION['user_id'])) { echo "<script>window.location.href='/admin/login';</script>"; exit; }
 ?>
 
-<div class="max-w-7xl mx-auto p-8">
-    <div class="flex justify-between items-center mb-8">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .swal2-popup { border-radius: 16px !important; font-family: 'Inter', sans-serif; }
+    /* Efeito de bloqueio na linha */
+    tr.blocked-row td { background-color: #fef2f2; color: #991b1b; }
+    tr.blocked-row td .text-gray-500 { color: #b91c1c; }
+</style>
+
+<div class="h-screen flex flex-col overflow-hidden">
+    
+    <div class="bg-white border-b border-gray-200 px-8 py-5 flex justify-between items-center z-10 shadow-sm shrink-0">
         <div>
-            <h1 class="text-3xl font-bold text-slate-800">Usuários</h1>
-            <p class="text-slate-500 mt-1">Gerencie a equipe <?php echo $isSuperAdmin ? '(Modo Global)' : ''; ?>.</p>
+            <h1 class="text-2xl font-bold text-gray-800 tracking-tight">Usuários e Permissões</h1>
+            <p class="text-sm text-gray-500 mt-0.5">Gerencie quem acessa o sistema.</p>
         </div>
-        <button onclick="openModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition flex items-center gap-2">
+        <button onclick="openModalUser()" class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl font-semibold text-sm shadow-lg transition transform active:scale-95 flex items-center gap-2">
             <i class="fas fa-user-plus"></i> Novo Usuário
         </button>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <table class="w-full text-left border-collapse">
-            <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">
-                <tr>
-                    <th class="p-5">Nome</th>
-                    <th class="p-5">Email</th>
-                    <?php if($isSuperAdmin): ?><th class="p-5">Empresa</th><?php endif; ?>
-                    <th class="p-5">Perfil</th>
-                    <th class="p-5">Vínculo</th>
-                    <th class="p-5 text-center">Status</th>
-                    <th class="p-5 text-right">Ações</th>
-                </tr>
-            </thead>
-            <tbody id="users-list" class="divide-y divide-slate-100 text-sm text-slate-600">
-                <tr><td colspan="<?php echo $isSuperAdmin?7:6; ?>" class="p-10 text-center text-slate-400"><i class="fas fa-spinner fa-spin"></i> Carregando...</td></tr>
-            </tbody>
-        </table>
+    <div class="flex-1 overflow-y-auto p-8">
+        <div class="max-w-[1600px] mx-auto">
+            
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col">
+                <div class="p-5 border-b border-gray-100 flex items-center gap-4 bg-gray-50/30 rounded-t-2xl">
+                    <div class="relative w-full max-w-md group">
+                        <i class="fas fa-search absolute left-4 top-3.5 text-gray-400"></i>
+                        <input type="text" id="search-input" onkeyup="filterUsers()" placeholder="Buscar usuário, email ou empresa..." 
+                               class="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-100 focus:border-slate-500 outline-none text-sm transition">
+                    </div>
+                    <div class="flex gap-2">
+                        <span class="text-xs font-bold px-3 py-2 bg-red-50 text-red-600 rounded-lg border border-red-100 hidden" id="blocked-count-badge">
+                            <i class="fas fa-lock mr-1"></i> <span id="blocked-count">0</span> Bloqueados (Fin.)
+                        </span>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                            <tr>
+                                <th class="p-5 pl-6">Usuário</th>
+                                <th class="p-5">Empresa / Cliente</th>
+                                <th class="p-5">Perfil</th>
+                                <th class="p-5 text-center">Status</th>
+                                <th class="p-5 pr-6 text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lista-usuarios" class="text-sm divide-y divide-gray-100 text-gray-600 bg-white"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
     </div>
 </div>
 
-<div id="modal-user" class="fixed inset-0 bg-black/80 hidden z-[60] flex items-center justify-center backdrop-blur-sm transition-opacity opacity-0">
-    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col transform scale-95 transition-transform duration-300" id="modal-content">
-        <div class="px-8 py-5 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-2xl">
-            <h3 class="text-xl font-bold text-slate-800" id="modal-title">Novo Usuário</h3>
-            <button onclick="closeModal()" class="text-slate-400 hover:text-red-500 text-2xl">&times;</button>
+<div id="modal-user" class="fixed inset-0 bg-gray-900/50 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity opacity-0">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl transform scale-95 transition-all duration-300" id="modal-user-content">
+        <div class="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+            <h3 class="font-bold text-lg text-gray-800" id="modal-title">Usuário</h3>
+            <button onclick="closeModal('modal-user')" class="text-gray-400 hover:text-red-500 transition"><i class="fas fa-times text-xl"></i></button>
         </div>
-        <div class="p-8 space-y-4 max-h-[80vh] overflow-y-auto">
-            <input type="hidden" id="user_id">
-            
-            <?php if ($isSuperAdmin): ?>
-            <div class="bg-yellow-50 p-3 rounded-lg border border-yellow-200 mb-4">
-                <label class="block text-xs font-bold text-yellow-700 mb-1 uppercase">Empresa (Tenant)</label>
-                <select id="user_tenant_id" onchange="loadRoles(this.value)" class="w-full px-4 py-2 rounded-lg border border-yellow-300 focus:border-yellow-500 outline-none bg-white font-bold text-slate-700">
-                    <?php foreach($tenantsList as $t): ?>
-                        <option value="<?php echo $t['id']; ?>" <?php echo $t['id'] == $tenant_id ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($t['name']); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <?php else: ?>
-                <input type="hidden" id="user_tenant_id" value="<?php echo $tenant_id; ?>">
-            <?php endif; ?>
-
-            <div><label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Nome</label><input type="text" id="user_name" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none" required></div>
-            <div><label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Email</label><input type="email" id="user_email" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none" required></div>
-            
-            <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Senha</label><input type="password" id="user_pass" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none" placeholder="••••••"></div>
+        <div class="p-6">
+            <form id="form-user" onsubmit="saveUser(event)" class="space-y-5">
+                <input type="hidden" id="user-id">
+                
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Perfil de Acesso</label>
-                    <select id="user_role" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none bg-white">
-                        <option value="">Carregando...</option>
-                    </select>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5 ml-1">NOME COMPLETO</label>
+                    <input type="text" id="user-name" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-slate-500 outline-none">
                 </div>
-            </div>
-
-            <div class="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
-                <label class="block text-xs font-bold text-indigo-800 mb-1 uppercase"><i class="fas fa-link mr-1"></i> Vincular Cliente (Opcional)</label>
-                <select id="user_customer" class="w-full px-4 py-2.5 rounded-lg border border-indigo-200 focus:border-indigo-500 outline-none bg-white">
-                    <option value="">-- Acesso Geral / Interno --</option>
-                    <?php foreach($customers as $c) echo "<option value='{$c['id']}'>{$c['name']}</option>"; ?>
-                </select>
-            </div>
-
-            <div class="grid grid-cols-2 gap-4 items-center">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Filial</label>
-                    <select id="user_branch" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white">
-                        <option value="">Todas (Matriz)</option>
-                        <?php foreach($branches as $b) echo "<option value='{$b['id']}'>{$b['name']}</option>"; ?>
-                    </select>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5 ml-1">EMAIL (LOGIN)</label>
+                    <input type="email" id="user-email" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-slate-500 outline-none">
                 </div>
-                <label class="flex items-center gap-2 cursor-pointer mt-5">
-                    <input type="checkbox" id="user_active" class="w-5 h-5 text-indigo-600 rounded" checked>
-                    <span class="text-sm font-bold text-slate-700">Usuário Ativo</span>
-                </label>
-            </div>
-        </div>
-        <div class="px-8 py-5 border-t border-slate-200 bg-slate-50 rounded-b-2xl flex justify-between items-center">
-            <button type="button" onclick="deleteUser()" id="btn-delete" class="text-red-500 hover:text-red-700 text-sm font-bold hidden"><i class="fas fa-trash mr-1"></i> Excluir</button>
-            <div class="flex gap-3 ml-auto">
-                <button onclick="closeModal()" class="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-white transition">Cancelar</button>
-                <button onclick="saveUser()" class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg transition">Salvar</button>
-            </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1.5 ml-1">PERFIL DE ACESSO</label>
+                        <select id="user-role" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-slate-500 outline-none bg-white cursor-pointer"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1.5 ml-1">STATUS</label>
+                        <select id="user-active" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-slate-500 outline-none bg-white cursor-pointer">
+                            <option value="1">Ativo</option>
+                            <option value="0">Inativo</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5 ml-1">VINCULAR A CLIENTE (OPCIONAL)</label>
+                    <select id="user-customer" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-slate-500 outline-none bg-white cursor-pointer">
+                        <option value="">Sem vínculo (Acesso Interno)</option>
+                        </select>
+                    <p class="text-[10px] text-gray-400 mt-1 ml-1">* Se selecionar, o usuário só verá dados deste cliente.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5 ml-1">SENHA <span class="font-normal text-gray-400" id="pass-hint"></span></label>
+                    <input type="password" id="user-pass" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-slate-500 outline-none" placeholder="••••••">
+                </div>
+
+                <button type="submit" class="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-900 shadow-md transition active:scale-95">Salvar Usuário</button>
+            </form>
         </div>
     </div>
 </div>
 
 <script>
-    const API_URL = '<?php echo $apiUrl; ?>';
-    const CURRENT_TENANT_ID = '<?php echo $tenant_id; ?>';
+    let allUsers = [];
+    let rolesList = [];
+    let customersList = [];
 
-    document.addEventListener('DOMContentLoaded', loadUsers);
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadFormData();
+        await loadUsers();
+    });
 
-    // FUNÇÃO PARA CARREGAR PERFIS (ROLES)
-    async function loadRoles(tenantId, selectedId = null) {
-        const select = document.getElementById('user_role');
-        select.innerHTML = '<option value="">Carregando...</option>';
-        select.disabled = true;
-
+    async function loadFormData() {
         try {
-            const res = await fetch(`${API_URL}?action=get_roles&tenant_id=${tenantId}`);
-            if(!res.ok) throw new Error('Erro ao buscar perfis');
-            
-            const roles = await res.json();
-            
-            let html = '<option value="">Sem Perfil (Acesso Limitado)</option>';
-            if(roles.length > 0) {
-                roles.forEach(r => {
-                    const sel = (selectedId && r.id == selectedId) ? 'selected' : '';
-                    html += `<option value="${r.id}" ${sel}>${r.name}</option>`;
-                });
+            const res = await fetch('/api_usuarios.php?action=get_form_data');
+            const data = await res.json();
+            if(data.success) {
+                rolesList = data.roles;
+                customersList = data.customers;
+                populateSelects();
             }
-            select.innerHTML = html;
-        } catch(e) {
-            console.error(e);
-            select.innerHTML = '<option value="">Erro ao carregar</option>';
-        } finally {
-            select.disabled = false;
-        }
+        } catch(e) {}
+    }
+
+    function populateSelects() {
+        const roleSel = document.getElementById('user-role');
+        roleSel.innerHTML = rolesList.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+        
+        const custSel = document.getElementById('user-customer');
+        custSel.innerHTML = '<option value="">Sem vínculo (Acesso Interno)</option>' + 
+            customersList.map(c => {
+                const flag = c.financial_status === 'overdue' ? '🔴 (Inadimplente)' : '';
+                return `<option value="${c.id}">${c.name} ${flag}</option>`;
+            }).join('');
     }
 
     async function loadUsers() {
-        const list = document.getElementById('users-list');
+        const tbody = document.getElementById('lista-usuarios');
         try {
-            const res = await fetch(API_URL + '?action=get_users');
-            if(!res.ok) throw new Error("Erro HTTP " + res.status);
-            const data = await res.json();
-            const colSpan = <?php echo $isSuperAdmin?6:5; ?>;
+            const res = await fetch('/api_usuarios.php?action=get_users');
+            const json = await res.json();
+            
+            if(!json.success) throw new Error(json.error);
+            
+            allUsers = json.data || [];
+            filterUsers();
 
-            if(data.length === 0) { list.innerHTML = `<tr><td colspan="${colSpan}" class="p-10 text-center text-slate-400">Nenhum usuário cadastrado.</td></tr>`; return; }
-
-            list.innerHTML = data.map(u => {
-                const roleBadge = u.role_name 
-                    ? `<span class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs font-bold border border-indigo-200"><i class="fas fa-shield-alt mr-1"></i> ${u.role_name}</span>`
-                    : `<span class="bg-slate-100 text-slate-500 px-2 py-1 rounded text-xs font-bold border border-slate-200">Sem Perfil</span>`;
-                
-                const tenantBadge = <?php echo $isSuperAdmin ? 'true' : 'false'; ?> ? `<td class="p-5 font-bold text-yellow-600 text-xs uppercase">${u.tenant_name || 'N/A'}</td>` : '';
-
-                const statusBadge = (u.active == 1 || u.active === true || u.active === 't') 
-                    ? `<span class="text-green-600 text-xs font-bold"><i class="fas fa-check-circle"></i> Ativo</span>`
-                    : `<span class="text-red-500 text-xs font-bold"><i class="fas fa-ban"></i> Inativo</span>`;
-
-                const safeUser = JSON.stringify(u).replace(/"/g, '&quot;');
-
-                return `
-                    <tr class="hover:bg-slate-50 transition border-b border-slate-50">
-                        <td class="p-5 font-bold text-slate-700 flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">${u.name.substring(0,2).toUpperCase()}</div>
-                            <div>${u.name}</div>
-                        </td>
-                        <td class="p-5 text-slate-600">${u.email}</td>
-                        ${tenantBadge}
-                        <td class="p-5">${roleBadge}</td>
-                        <td class="p-5 text-center">${statusBadge}</td>
-                        <td class="p-5 text-right">
-                            <button onclick="editUser(${safeUser})" class="text-slate-400 hover:text-indigo-600 transition p-2 rounded-lg hover:bg-indigo-50"><i class="fas fa-pencil-alt"></i></button>
-                        </td>
-                    </tr>`;
-            }).join('');
-        } catch(e) { 
-            console.error(e); 
-            const colSpan = <?php echo $isSuperAdmin?6:5; ?>;
-            list.innerHTML = `<tr><td colspan="${colSpan}" class="p-10 text-center text-red-500">
-                <i class="fas fa-exclamation-triangle text-2xl mb-2"></i><br>
-                <b>Erro ao conectar na API.</b><br>
-                <small>${e.message}</small>
-            </td></tr>`; 
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-red-500">${e.message}</td></tr>`;
         }
     }
 
-    const modal = document.getElementById('modal-user'), content = document.getElementById('modal-content');
-
-    function openModal() {
-        document.getElementById('user_id').value = '';
-        document.getElementById('user_name').value = '';
-        document.getElementById('user_email').value = '';
-        document.getElementById('user_pass').value = '';
-        document.getElementById('user_customer').value = '';
-        document.getElementById('user_branch').value = '';
-        document.getElementById('user_active').checked = true;
-        document.getElementById('modal-title').innerText = "Novo Usuário";
-        document.getElementById('btn-delete').classList.add('hidden');
-        
-        // Carrega perfis do tenant atual ao abrir modal de criação
-        const currentTenant = document.getElementById('user_tenant_id') ? document.getElementById('user_tenant_id').value : CURRENT_TENANT_ID;
-        loadRoles(currentTenant);
-
-        modal.classList.remove('hidden'); 
-        setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); content.classList.add('scale-100'); }, 10);
+    function filterUsers() {
+        const term = document.getElementById('search-input').value.toLowerCase();
+        const filtered = allUsers.filter(u => 
+            u.name.toLowerCase().includes(term) || 
+            u.email.toLowerCase().includes(term) ||
+            (u.customer_name && u.customer_name.toLowerCase().includes(term))
+        );
+        renderTable(filtered);
     }
 
-    function closeModal() { content.classList.remove('scale-100'); content.classList.add('scale-95'); modal.classList.add('opacity-0'); setTimeout(() => modal.classList.add('hidden'), 300); }
+    function renderTable(data) {
+        const tbody = document.getElementById('lista-usuarios');
+        let blockedCount = 0;
 
-    function editUser(u) {
-        openModal();
-        document.getElementById('modal-title').innerText = "Editar Usuário";
-        document.getElementById('btn-delete').classList.remove('hidden');
-        document.getElementById('user_id').value = u.id;
-        document.getElementById('user_name').value = u.name;
-        document.getElementById('user_email').value = u.email;
-        document.getElementById('user_customer').value = u.customer_id || '';
-        document.getElementById('user_branch').value = u.branch_id || '';
-        document.getElementById('user_active').checked = (u.active == 1 || u.active === true || u.active === 't');
-        document.getElementById('user_pass').placeholder = "Deixe em branco para não alterar";
+        if(data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-gray-400">Nenhum usuário encontrado.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(u => {
+            // Lógica de Status (Financeiro > Ativo/Inativo)
+            let statusHtml = '';
+            let rowClass = '';
+            
+            if (u.is_blocked_financial) {
+                blockedCount++;
+                statusHtml = `<span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase border border-red-200 flex items-center justify-center gap-1"><i class="fas fa-lock"></i> Bloqueado (Fin.)</span>`;
+                rowClass = 'blocked-row'; // Classe CSS para pintar de vermelho
+            } else if (u.active == 1) {
+                statusHtml = `<span class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase border border-emerald-200">Ativo</span>`;
+            } else {
+                statusHtml = `<span class="bg-gray-100 text-gray-500 px-3 py-1 rounded-full text-[10px] font-bold uppercase border border-gray-200">Inativo</span>`;
+            }
+
+            // Iniciais
+            const initials = u.name.substring(0,2).toUpperCase();
+            const avatarColor = u.is_blocked_financial ? 'bg-red-200 text-red-700' : 'bg-slate-200 text-slate-600';
+
+            return `
+            <tr class="hover:bg-gray-50/80 transition border-b border-gray-100 group ${rowClass}">
+                <td class="p-5 pl-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full ${avatarColor} flex items-center justify-center font-bold text-xs shadow-sm">${initials}</div>
+                        <div>
+                            <div class="font-bold text-gray-800 text-sm">${u.name}</div>
+                            <div class="text-xs text-gray-500">${u.email}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="p-5 text-sm">
+                    ${u.customer_name ? `<span class="font-semibold text-slate-700"><i class="fas fa-building text-slate-400 mr-1"></i> ${u.customer_name}</span>` : '<span class="text-slate-400 italic">Interno</span>'}
+                </td>
+                <td class="p-5 text-sm text-slate-600">${u.role_name || '-'}</td>
+                <td class="p-5 text-center">${statusHtml}</td>
+                <td class="p-5 pr-6 text-right">
+                    <div class="flex items-center justify-end gap-2">
+                        <button onclick="editUser(${u.id})" class="text-slate-400 hover:text-blue-600 p-2 rounded-lg hover:bg-white transition"><i class="fas fa-pen"></i></button>
+                        <button onclick="deleteUser(${u.id})" class="text-slate-400 hover:text-red-600 p-2 rounded-lg hover:bg-white transition"><i class="fas fa-trash"></i></button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+
+        // Badge de Contagem
+        const badge = document.getElementById('blocked-count-badge');
+        if(blockedCount > 0) {
+            badge.classList.remove('hidden');
+            document.getElementById('blocked-count').innerText = blockedCount;
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+
+    // --- CRUD ---
+    function openModalUser(id = null) {
+        document.getElementById('form-user').reset();
+        document.getElementById('user-id').value = '';
+        document.getElementById('modal-title').innerText = 'Novo Usuário';
+        document.getElementById('pass-hint').innerText = '(Obrigatória)';
         
-        if(document.getElementById('user_tenant_id')) {
-            document.getElementById('user_tenant_id').value = u.tenant_id || CURRENT_TENANT_ID;
+        if (id) {
+            const u = allUsers.find(x => x.id == id);
+            if(u) {
+                document.getElementById('user-id').value = u.id;
+                document.getElementById('user-name').value = u.name;
+                document.getElementById('user-email').value = u.email;
+                document.getElementById('user-role').value = u.role_id;
+                document.getElementById('user-customer').value = u.customer_id || '';
+                document.getElementById('user-active').value = u.active;
+                document.getElementById('modal-title').innerText = 'Editar Usuário';
+                document.getElementById('pass-hint').innerText = '(Deixe vazio para manter)';
+            }
         }
         
-        // Carrega perfis da empresa do usuário e seleciona o correto
-        loadRoles(u.tenant_id || CURRENT_TENANT_ID, u.role_id);
+        const m = document.getElementById('modal-user');
+        m.classList.remove('hidden');
+        setTimeout(() => { m.classList.remove('opacity-0'); document.getElementById('modal-user-content').classList.remove('scale-95'); }, 10);
     }
+    window.editUser = (id) => openModalUser(id);
 
-    async function saveUser() {
-        const btn = document.querySelector('button[onclick="saveUser()"]');
-        const oldTxt = btn.innerText; 
-        btn.innerText = "Salvando..."; btn.disabled = true;
-
+    async function saveUser(e) {
+        e.preventDefault();
         const data = {
-            id: document.getElementById('user_id').value,
-            name: document.getElementById('user_name').value,
-            email: document.getElementById('user_email').value,
-            role_id: document.getElementById('user_role').value,
-            customer_id: document.getElementById('user_customer').value,
-            branch_id: document.getElementById('user_branch').value,
-            password: document.getElementById('user_pass').value,
-            active: document.getElementById('user_active').checked,
-            tenant_id: document.getElementById('user_tenant_id') ? document.getElementById('user_tenant_id').value : null
+            id: document.getElementById('user-id').value,
+            name: document.getElementById('user-name').value,
+            email: document.getElementById('user-email').value,
+            role_id: document.getElementById('user-role').value,
+            customer_id: document.getElementById('user-customer').value,
+            active: document.getElementById('user-active').value,
+            password: document.getElementById('user-pass').value
         };
 
         try {
-            const res = await fetch(API_URL + '?action=save_user', { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify(data) 
-            });
-            
-            const resp = await res.json();
-            
-            if(res.ok && resp.success) { 
-                closeModal(); 
-                loadUsers(); 
-            } else { 
-                alert('Erro: ' + (resp.error || 'Falha desconhecida no servidor.')); 
-            }
-        } catch(e) { 
-            alert('Erro de conexão: ' + e.message); 
-        } finally { 
-            btn.innerText = oldTxt; btn.disabled = false; 
+            const res = await fetch('/api_usuarios.php?action=save_user', { method: 'POST', body: JSON.stringify(data) });
+            const json = await res.json();
+            if(json.success) {
+                Swal.fire({ icon: 'success', title: 'Salvo!', timer: 1500, showConfirmButton: false });
+                closeModal('modal-user');
+                loadUsers();
+            } else throw new Error(json.error);
+        } catch(err) { Swal.fire('Erro', err.message, 'error'); }
+    }
+
+    window.deleteUser = async (id) => {
+        const r = await Swal.fire({ title: 'Excluir?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sim' });
+        if (r.isConfirmed) {
+            try { await fetch('/api_usuarios.php?action=delete_user', { method: 'POST', body: JSON.stringify({id}) }); loadUsers(); } catch(e) {}
         }
     }
 
-    async function deleteUser() {
-        const id = document.getElementById('user_id').value;
-        if(!id || !confirm("Excluir usuário?")) return;
-        try {
-            const res = await fetch(API_URL + '?action=delete_user', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id }) });
-            if((await res.json()).success) { closeModal(); loadUsers(); } else { alert('Erro ao excluir.'); }
-        } catch(e) { alert('Erro conexão.'); }
+    function closeModal(id) {
+        const m = document.getElementById(id);
+        const c = m.querySelector('div[id$="-content"]');
+        c.classList.add('scale-95'); m.classList.add('opacity-0');
+        setTimeout(() => { m.classList.add('hidden'); c.classList.remove('scale-95'); }, 300);
     }
 </script>

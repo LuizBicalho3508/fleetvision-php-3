@@ -1,13 +1,16 @@
 <?php
+// ARQUIVO: api_dados.php
+// Centraliza CRUD (Clientes, Usuários, Veículos), KPIs e Proxy Traccar
+
 session_start();
-// Habilita exibição de erros apenas para debug (remova em produção se necessário)
 ini_set('display_errors', 0); 
 error_reporting(E_ALL);
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 
+// 1. Segurança Básica
 if (!isset($_SESSION['user_id'])) { 
     http_response_code(403); 
     exit(json_encode(['error' => 'Sessão expirada.'])); 
@@ -21,10 +24,10 @@ require 'db.php';
 
 $tenant_id  = $_SESSION['tenant_id'];
 $user_id    = $_SESSION['user_id'];
-$user_email = $_SESSION['user_email'] ?? '';
 $user_role  = $_SESSION['user_role'] ?? 'user';
+$user_email = $_SESSION['user_email'] ?? '';
 
-// --- FILTRO DE CLIENTE ---
+// 2. Filtro de Permissões (Quem vê o quê)
 $loggedCustomerId = null;
 $isRestricted = false;
 
@@ -33,6 +36,7 @@ if ($user_role != 'admin' && $user_role != 'superadmin') {
     $stmtUserCheck = $pdo->prepare("SELECT customer_id FROM saas_users WHERE id = ?");
     $stmtUserCheck->execute([$user_id]);
     $userDirectCustomer = $stmtUserCheck->fetchColumn();
+    // Tenta pelo ID direto ou pelo email se não achar
     $loggedCustomerId = $userDirectCustomer ?: ($pdo->query("SELECT id FROM saas_customers WHERE email = '$user_email' AND tenant_id = $tenant_id")->fetchColumn());
 }
 
@@ -47,8 +51,9 @@ if ($isRestricted) {
 
 $action = $_REQUEST['action'] ?? '';
 $endpoint = $_REQUEST['endpoint'] ?? '';
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
 
-// --- ROTEADOR ---
+// --- ROTEADOR PROXY TRACCAR (LEGADO) ---
 if (!empty($endpoint)) {
     if (strpos($endpoint, 'dashboard') !== false) { 
         http_response_code(400); 
@@ -60,7 +65,87 @@ if (!empty($endpoint)) {
 
 switch ($action) {
 
-    // --- KPIS & DASHBOARD ---
+    // =========================================================================
+    // 🏢 GESTÃO DE CLIENTES (ATUALIZADO)
+    // =========================================================================
+    
+    case 'get_customers':
+        try {
+            // Busca clientes com dados de contrato e vínculo asaas
+            $stmt = $pdo->prepare("
+                SELECT id, name, document, email, phone, address, 
+                       asaas_customer_id, asaas_customer_name, financial_status,
+                       contract_value, due_day, contract_status
+                FROM saas_customers 
+                WHERE tenant_id = ? 
+                ORDER BY id DESC
+            ");
+            $stmt->execute([$tenant_id]);
+            echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        } catch (Exception $e) { http_500($e->getMessage()); }
+        break;
+
+    case 'save_customer':
+        if ($user_role !== 'admin' && $user_role !== 'superadmin') http_403('Sem permissão');
+        
+        $id = $input['id'] ?? null;
+        $name = $input['name'] ?? '';
+        $doc = $input['document'] ?? '';
+        $phone = $input['phone'] ?? '';
+        $email = $input['email'] ?? '';
+        $addr = $input['address'] ?? '';
+        
+        // Dados de Contrato
+        $cValue = $input['contract_value'] ?? 0.00;
+        $cDay = $input['due_day'] ?? 10;
+
+        if (empty($name)) http_400('Nome obrigatório');
+
+        try {
+            if ($id) {
+                // UPDATE
+                $stmt = $pdo->prepare("UPDATE saas_customers SET name=?, document=?, phone=?, email=?, address=?, contract_value=?, due_day=? WHERE id=? AND tenant_id=?");
+                $stmt->execute([$name, $doc, $phone, $email, $addr, $cValue, $cDay, $id, $tenant_id]);
+            } else {
+                // INSERT
+                $stmt = $pdo->prepare("INSERT INTO saas_customers (tenant_id, name, document, phone, email, address, contract_value, due_day, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
+                $stmt->execute([$tenant_id, $name, $doc, $phone, $email, $addr, $cValue, $cDay]);
+            }
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) { http_500($e->getMessage()); }
+        break;
+
+    case 'delete_customer':
+        if ($user_role !== 'admin' && $user_role !== 'superadmin') http_403('Sem permissão');
+        $id = $input['id'] ?? null;
+        if (!$id) http_400('ID inválido');
+        try {
+            $stmt = $pdo->prepare("DELETE FROM saas_customers WHERE id = ? AND tenant_id = ?");
+            $stmt->execute([$id, $tenant_id]);
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) { http_500('Erro ao excluir (verifique se há veículos ou usuários vinculados)'); }
+        break;
+
+    case 'link_asaas_customer':
+        if ($user_role !== 'admin' && $user_role !== 'superadmin') http_403('Sem permissão');
+        
+        $localId = $input['local_id'] ?? null;
+        $asaasId = $input['asaas_id'] ?? null;
+        $asaasName = $input['asaas_name'] ?? 'Cliente Asaas';
+
+        if (!$localId || !$asaasId) http_400('Dados incompletos');
+
+        try {
+            // Salva o ID e o Nome do Asaas para exibição rápida sem API
+            $stmt = $pdo->prepare("UPDATE saas_customers SET asaas_customer_id = ?, asaas_customer_name = ?, financial_status = 'ok' WHERE id = ? AND tenant_id = ?");
+            $stmt->execute([$asaasId, $asaasName, $localId, $tenant_id]);
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) { http_500($e->getMessage()); }
+        break;
+
+    // =========================================================================
+    // 📊 KPIS & DASHBOARD
+    // =========================================================================
     case 'get_kpis':
         try {
             $sqlTotal = "SELECT COUNT(*) FROM saas_vehicles v WHERE v.tenant_id = ? AND v.status = 'active' $restrictionSQL";
@@ -104,6 +189,7 @@ switch ($action) {
                     WHERE v.tenant_id = ? AND v.status = 'active' $restrictionSQL";
             if ($type === 'offline') $sql .= " AND (t.lastupdate < NOW() - INTERVAL '24 hours' OR t.lastupdate IS NULL)";
             elseif ($type === 'online') $sql .= " AND t.lastupdate >= NOW() - INTERVAL '24 hours'";
+            
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$tenant_id]);
             echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
@@ -144,48 +230,10 @@ switch ($action) {
         } catch (Exception $e) { http_500($e->getMessage()); }
         break;
 
-    // --- FINANCEIRO ---
-    case 'asaas_save_config':
-        if ($user_role != 'admin' && $user_role != 'superadmin') http_400('Permissão negada');
-        $input = json_decode(file_get_contents('php://input'), true);
-        $token = $input['apiKey'] ?? '';
-        $test = callAsaas('/finance/balance', 'GET', [], $token);
-        if (isset($test['errors'])) http_400('Chave API Inválida.');
-        try {
-            $stmt = $pdo->prepare("UPDATE saas_tenants SET asaas_token = ? WHERE id = ?");
-            $stmt->execute([$token, $tenant_id]);
-            echo json_encode(['success' => true]);
-        } catch (Exception $e) { http_500($e->getMessage()); }
-        break;
-
-    case 'asaas_get_config':
-        $stmt = $pdo->prepare("SELECT asaas_token FROM saas_tenants WHERE id = ?");
-        $stmt->execute([$tenant_id]);
-        echo json_encode(['has_token' => !empty($stmt->fetchColumn())]);
-        break;
-
-    case 'asaas_proxy':
-        $stmt = $pdo->prepare("SELECT asaas_token FROM saas_tenants WHERE id = ?");
-        $stmt->execute([$tenant_id]);
-        $apiToken = $stmt->fetchColumn();
-        if (empty($apiToken)) http_400('Configure a Chave API do Asaas.');
-        $asaas_endpoint = $_REQUEST['asaas_endpoint'] ?? '';
-        $method = $_SERVER['REQUEST_METHOD'];
-        $data = json_decode(file_get_contents('php://input'), true) ?? [];
-        if ($method === 'GET' && !empty($_GET)) {
-            $query = $_GET; unset($query['action'], $query['asaas_endpoint']); 
-            if (strpos($asaas_endpoint, '?') === false) $asaas_endpoint .= '?' . http_build_query($query);
-            else $asaas_endpoint .= '&' . http_build_query($query);
-        }
-        $response = callAsaas($asaas_endpoint, $method, $data, $apiToken);
-        echo json_encode($response);
-        break;
-
     // =========================================================================
-    // 👥 USERS & ROLES
+    // 👥 GESTÃO DE USUÁRIOS & PERFIS
     // =========================================================================
     
-    // Lista usuários do tenant
     case 'get_users':
         try {
             $sql = "SELECT u.id, u.name, u.email, u.role_id, u.customer_id, u.branch_id, u.active, u.tenant_id,
@@ -205,19 +253,13 @@ switch ($action) {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute([$tenant_id]);
             }
-            
             echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
         } catch (Exception $e) { http_500($e->getMessage()); }
         break;
 
-    // LISTAR PERFIS (ESSENCIAL PARA O SELECT FUNCIONAR)
     case 'get_roles':
         try {
-            // Se for superadmin, pode ver de qualquer tenant (passado via GET)
             $target_tenant = ($user_role === 'superadmin' && isset($_GET['tenant_id'])) ? $_GET['tenant_id'] : $tenant_id;
-
-            // Busca perfis do tenant alvo OU do tenant admin (global)
-            // Primeiro pegamos o ID do admin para saber quais são globais
             $stmtAdmin = $pdo->prepare("SELECT id FROM saas_tenants WHERE slug = 'admin' LIMIT 1");
             $stmtAdmin->execute();
             $adminTenantId = $stmtAdmin->fetchColumn() ?: 0;
@@ -225,113 +267,59 @@ switch ($action) {
             $sql = "SELECT id, name, tenant_id FROM saas_roles WHERE tenant_id = ? OR tenant_id = ? ORDER BY tenant_id ASC, name ASC";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$target_tenant, $adminTenantId]);
-            
             $roles = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Marca visivelmente os globais
-            foreach($roles as &$r) {
-                if ($r['tenant_id'] != $target_tenant) {
-                    $r['name'] .= ' (Global)';
-                }
-            }
+            foreach($roles as &$r) { if ($r['tenant_id'] != $target_tenant) $r['name'] .= ' (Global)'; }
             echo json_encode($roles);
         } catch (Exception $e) { http_500($e->getMessage()); }
         break;
 
-    // SALVAR USUÁRIO (COM DEBUG DE ERRO SQL)
     case 'save_user':
-        $input = json_decode(file_get_contents('php://input'), true);
         $id = $input['id'] ?? null;
         $name = trim($input['name'] ?? '');
         $email = trim($input['email'] ?? '');
         $pass = $input['password'] ?? '';
-        
-        // Tratamento de campos opcionais (Null se vazio)
         $role = !empty($input['role_id']) ? $input['role_id'] : null;
         $cust = !empty($input['customer_id']) ? $input['customer_id'] : null;
         $branch = !empty($input['branch_id']) ? $input['branch_id'] : null;
-        
-        // Active: converte para 1 ou 0 (inteiro)
         $active = (isset($input['active']) && $input['active']) ? 1 : 0;
-        
-        // Define tenant alvo (Superadmin pode escolher, outros usam sessão)
         $target_tenant_id = ($user_role === 'superadmin' && !empty($input['tenant_id'])) ? $input['tenant_id'] : $tenant_id;
         
         if (empty($name) || empty($email)) http_400('Nome e Email são obrigatórios.');
 
         try {
-            // Valida duplicidade de email
             $checkSql = "SELECT id FROM saas_users WHERE email = ? AND tenant_id = ?";
             $checkParams = [$email, $target_tenant_id];
-            if ($id) {
-                $checkSql .= " AND id != ?";
-                $checkParams[] = $id;
-            }
+            if ($id) { $checkSql .= " AND id != ?"; $checkParams[] = $id; }
             $stmtCheck = $pdo->prepare($checkSql);
             $stmtCheck->execute($checkParams);
-            if ($stmtCheck->fetch()) http_400('Este email já está em uso nesta empresa.');
+            if ($stmtCheck->fetch()) http_400('Este email já está em uso.');
 
             if ($id) {
-                // UPDATE
                 $sql = "UPDATE saas_users SET name=?, email=?, role_id=?, customer_id=?, branch_id=?, active=?, tenant_id=? WHERE id=?";
                 $params = [$name, $email, $role, $cust, $branch, $active, $target_tenant_id, $id];
-                
-                if ($user_role !== 'superadmin') {
-                    $sql .= " AND tenant_id=?";
-                    $params[] = $tenant_id;
-                }
-
-                if (!empty($pass)) { 
-                    $sql = str_replace('active=?,', 'active=?, password=?,', $sql); 
-                    // Insere senha na posição 6 (logo após active)
-                    array_splice($params, 6, 0, password_hash($pass, PASSWORD_DEFAULT));
-                }
-                
+                if ($user_role !== 'superadmin') { $sql .= " AND tenant_id=?"; $params[] = $tenant_id; }
+                if (!empty($pass)) { $sql = str_replace('active=?,', 'active=?, password=?,', $sql); array_splice($params, 6, 0, password_hash($pass, PASSWORD_DEFAULT)); }
                 $pdo->prepare($sql)->execute($params);
             } else {
-                // INSERT
-                if(empty($pass)) http_400('Senha obrigatória para novos usuários.');
-                
+                if(empty($pass)) http_400('Senha obrigatória.');
                 $stmt = $pdo->prepare("INSERT INTO saas_users (tenant_id, name, email, password, role_id, customer_id, branch_id, status, active) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)");
                 $stmt->execute([$target_tenant_id, $name, $email, password_hash($pass, PASSWORD_DEFAULT), $role, $cust, $branch, $active]);
             }
             echo json_encode(['success' => true]);
-
-        } catch (PDOException $e) { 
-            // RETORNA ERRO REAL DO BANCO (ÚTIL PARA DEBUG 500)
-            http_response_code(500);
-            echo json_encode(['error' => 'Erro SQL: ' . $e->getMessage()]);
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Erro Interno: ' . $e->getMessage()]);
-        }
+        } catch (Exception $e) { http_500($e->getMessage()); }
         break;
 
     case 'delete_user':
-        $input = json_decode(file_get_contents('php://input'), true);
         $id = $input['id'] ?? null;
         if (!$id || $id == $user_id) http_400('Operação inválida');
         try {
-            if ($user_role === 'superadmin') {
-                $pdo->prepare("DELETE FROM saas_users WHERE id = ?")->execute([$id]);
-            } else {
-                $pdo->prepare("DELETE FROM saas_users WHERE id = ? AND tenant_id = ?")->execute([$id, $tenant_id]);
-            }
+            if ($user_role === 'superadmin') $pdo->prepare("DELETE FROM saas_users WHERE id = ?")->execute([$id]);
+            else $pdo->prepare("DELETE FROM saas_users WHERE id = ? AND tenant_id = ?")->execute([$id, $tenant_id]);
             echo json_encode(['success' => true]);
         } catch (Exception $e) { http_500($e->getMessage()); }
         break;
 
-    // --- PROFILES ---
-    case 'get_profiles':
-        try {
-            $stmt = $pdo->prepare("SELECT * FROM saas_roles WHERE tenant_id = ? ORDER BY id DESC");
-            $stmt->execute([$tenant_id]);
-            echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
-        } catch (Exception $e) { http_500($e->getMessage()); }
-        break;
-
     case 'save_profile':
-        $input = json_decode(file_get_contents('php://input'), true);
         $id = $input['id'] ?? null;
         $name = $input['name'] ?? '';
         $permissions = is_array($input['permissions'] ?? []) ? json_encode($input['permissions']) : ($input['permissions'] ?? '[]');
@@ -349,7 +337,6 @@ switch ($action) {
         break;
 
     case 'delete_profile':
-        $input = json_decode(file_get_contents('php://input'), true);
         $id = $input['id'] ?? null;
         if (!$id) http_400('ID inválido');
         try {
@@ -359,67 +346,38 @@ switch ($action) {
         } catch (Exception $e) { http_500($e->getMessage()); }
         break;
 
-    // --- COMANDOS ---
+    // --- GEOCODE & COMANDOS (Proxy/Legacy) ---
+    case 'geocode':
+        handleGeocode($_GET['lat']??0, $_GET['lon']??0, $pdo);
+        break;
+
     case 'secure_command':
-        $input = json_decode(file_get_contents('php://input'), true);
         $deviceId = $input['deviceId'] ?? null; $cmdType = $input['type'] ?? null; $password = $input['password'] ?? '';
         if (!$deviceId || !$cmdType) http_400('Dados incompletos');
         if ($password !== 'SKIP_CHECK') {
             $stmt = $pdo->prepare("SELECT password FROM saas_users WHERE id = ?"); $stmt->execute([$user_id]);
             if (!password_verify($password, $stmt->fetchColumn())) { http_response_code(401); exit(json_encode(['error' => 'Senha incorreta'])); }
         }
-        $checkSql = "SELECT COUNT(*) FROM saas_vehicles v WHERE traccar_device_id = ? AND tenant_id = ? $restrictionSQL";
-        $stmtCheck = $pdo->prepare($checkSql); $stmtCheck->execute([$deviceId, $tenant_id]);
-        if ($stmtCheck->fetchColumn() == 0) { http_response_code(403); exit(json_encode(['error' => 'Acesso negado'])); }
-        
-        $traccarCmd = ($cmdType === 'lock') ? 'engineStop' : (($cmdType === 'unlock') ? 'engineResume' : $cmdType);
-        $attr = $input['attributes'] ?? new stdClass();
-        
         $ch = curl_init("http://127.0.0.1:8082/api/commands/send");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_USERPWD, "admin:admin"); 
         curl_setopt($ch, CURLOPT_POST, true); curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['deviceId' => $deviceId, 'type' => $traccarCmd, 'attributes' => $attr]));
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['deviceId' => (int)$deviceId, 'type' => $cmdType]));
         $resp = curl_exec($ch);
         if (curl_getinfo($ch, CURLINFO_HTTP_CODE) >= 400) http_500('Erro Traccar: ' . $resp);
         else echo json_encode(['success' => true]);
         curl_close($ch);
         break;
 
-    case 'get_history_positions':
-        $deviceId = $_GET['deviceId'] ?? null;
-        $dateStr  = $_GET['date'] ?? null; 
-        if (!$deviceId || !$dateStr) http_400('ID e Data são obrigatórios.');
-        $checkSql = "SELECT COUNT(*) FROM saas_vehicles v WHERE traccar_device_id = ? AND tenant_id = ? $restrictionSQL";
-        $stmtCheck = $pdo->prepare($checkSql); $stmtCheck->execute([$deviceId, $tenant_id]);
-        if ($stmtCheck->fetchColumn() == 0) http_403('Acesso negado.');
-        try {
-            $dtStart = new DateTime($dateStr . ' 00:00:00'); $dtStart->setTimezone(new DateTimeZone('UTC'));
-            $isoFrom = $dtStart->format('Y-m-d\TH:i:s\Z');
-            $dtEnd = new DateTime($dateStr . ' 23:59:59'); $dtEnd->setTimezone(new DateTimeZone('UTC'));
-            $isoTo = $dtEnd->format('Y-m-d\TH:i:s\Z');
-        } catch (Exception $e) { http_400('Data inválida.'); }
-        $url = "http://127.0.0.1:8082/api/reports/route?deviceId=$deviceId&from=$isoFrom&to=$isoTo";
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_USERPWD, "admin:admin");
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']); 
-        $response = curl_exec($ch);
-        if (curl_getinfo($ch, CURLINFO_HTTP_CODE) >= 200) echo $response; else echo json_encode([]);
-        curl_close($ch);
-        break;
-
-    case 'geocode':
-        handleGeocode($_GET['lat']??0, $_GET['lon']??0, $pdo);
-        break;
-
-    case 'ping': echo json_encode(['status' => 'ok', 'tenant' => $tenant_id]); break;
+    case 'ping': echo json_encode(['status' => 'ok']); break;
 
     default:
+        // Fallback de geocode antigo se necessário
         if (isset($_GET['type']) && $_GET['type'] === 'geocode') handleGeocode($_GET['lat'], $_GET['lon'], $pdo);
         else { http_response_code(404); echo json_encode(['error' => 'Action inválida']); }
         break;
 }
 
-// HELPERS
+// --- HELPERS ---
 function handleProxyTraccar($endpoint, $tenant_id, $loggedCustomerId, $user_id, $pdo) {
     $url = 'http://127.0.0.1:8082/api' . $endpoint . '?' . http_build_query($_GET);
     $ch = curl_init($url);
@@ -447,25 +405,25 @@ function handleProxyTraccar($endpoint, $tenant_id, $loggedCustomerId, $user_id, 
 }
 
 function handleGeocode($lat, $lon, $pdo) {
-    $cached = $pdo->query("SELECT address FROM saas_address_cache WHERE lat='$lat' AND lon='$lon'")->fetchColumn();
-    if($cached) { echo json_encode(['address'=>$cached]); exit; }
+    $lat = round($lat, 5); $lon = round($lon, 5);
+    try {
+        $stmt = $pdo->prepare("SELECT address FROM saas_address_cache WHERE lat = ? AND lon = ? LIMIT 1");
+        $stmt->execute([$lat, $lon]);
+        if($r = $stmt->fetchColumn()) { echo json_encode(['address'=>$r]); exit; }
+    } catch(Exception $e) {}
+
     $ch = curl_init("https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon&zoom=18&addressdetails=1");
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_USERAGENT, "FV/1.0");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_USERAGENT, "FV/1.0"); curl_setopt($ch, CURLOPT_TIMEOUT, 3);
     $json = json_decode(curl_exec($ch), true); curl_close($ch);
+    
     $addr = $json['display_name'] ?? 'Local desconhecido';
-    $pdo->prepare("INSERT INTO saas_address_cache (lat, lon, address) VALUES (?, ?, ?)")->execute([$lat, $lon, $addr]);
-    echo json_encode(['address' => $addr]);
-    exit;
+    if ($addr !== 'Local desconhecido') {
+        try { $pdo->prepare("INSERT INTO saas_address_cache (lat, lon, address) VALUES (?, ?, ?)")->execute([$lat, $lon, $addr]); } catch(Exception $e){}
+    }
+    echo json_encode(['address' => $addr]); exit;
 }
-function callAsaas($endpoint, $method, $data, $apiKey) {
-    $ch = curl_init('https://api.asaas.com/v3' . ($endpoint[0]!='/'?'/':'') . $endpoint);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json", "access_token: " . trim($apiKey)]);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    if ($method === 'POST' || $method === 'PUT') curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    $json = json_decode(curl_exec($ch), true); curl_close($ch);
-    if (isset($json['errors'])) return ['error' => $json['errors'][0]['description'] ?? 'Erro Asaas'];
-    return $json;
-}
+
 function http_400($msg) { http_response_code(400); exit(json_encode(['error' => $msg])); }
+function http_403($msg) { http_response_code(403); exit(json_encode(['error' => $msg])); }
 function http_500($msg) { http_response_code(500); exit(json_encode(['error' => $msg])); }
 ?>

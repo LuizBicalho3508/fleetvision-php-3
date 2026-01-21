@@ -29,7 +29,7 @@ $action     = $_REQUEST['action'] ?? '';
 switch ($action) {
 
     // Salvar Chave de API
-    case 'save_config':
+    case 'asaas_save_config':
         if ($user_role != 'admin' && $user_role != 'superadmin') {
             http_response_code(403); 
             exit(json_encode(['error' => 'Permissão negada.']));
@@ -38,11 +38,16 @@ switch ($action) {
         $input = json_decode(file_get_contents('php://input'), true);
         $token = $input['apiKey'] ?? '';
         
+        if (empty($token)) {
+            http_response_code(400);
+            exit(json_encode(['error' => 'Chave vazia.']));
+        }
+
         // Testa a chave antes de salvar
         $test = callAsaas('/finance/balance', 'GET', [], $token);
         if (isset($test['errors'])) {
             http_response_code(400); 
-            exit(json_encode(['error' => 'Chave API Inválida.']));
+            exit(json_encode(['error' => 'Chave API Inválida no Asaas.']));
         }
 
         try {
@@ -56,7 +61,7 @@ switch ($action) {
         break;
 
     // Verificar se existe configuração
-    case 'get_config':
+    case 'asaas_get_config':
         try {
             $stmt = $pdo->prepare("SELECT asaas_token FROM saas_tenants WHERE id = ?");
             $stmt->execute([$tenant_id]);
@@ -68,8 +73,8 @@ switch ($action) {
         }
         break;
 
-    // Proxy para requisições Asaas
-    case 'proxy':
+    // Proxy para requisições Asaas (Protege a chave API no backend)
+    case 'asaas_proxy':
         try {
             $stmt = $pdo->prepare("SELECT asaas_token FROM saas_tenants WHERE id = ?");
             $stmt->execute([$tenant_id]);
@@ -84,13 +89,16 @@ switch ($action) {
             $method = $_SERVER['REQUEST_METHOD'];
             $data = json_decode(file_get_contents('php://input'), true) ?? [];
 
-            // Repassa parâmetros GET
+            // Repassa parâmetros GET extras (filtros, paginação)
             if ($method === 'GET' && !empty($_GET)) {
                 $query = $_GET; 
+                // Remove parâmetros internos da nossa API para não enviar pro Asaas
                 unset($query['action'], $query['asaas_endpoint']); 
                 
-                $separator = strpos($asaas_endpoint, '?') === false ? '?' : '&';
-                $asaas_endpoint .= $separator . http_build_query($query);
+                if (!empty($query)) {
+                    $separator = strpos($asaas_endpoint, '?') === false ? '?' : '&';
+                    $asaas_endpoint .= $separator . http_build_query($query);
+                }
             }
 
             $response = callAsaas($asaas_endpoint, $method, $data, $apiToken);
@@ -110,7 +118,7 @@ switch ($action) {
 
 // Helper Function
 function callAsaas($endpoint, $method, $data, $apiKey) {
-    // URL Base do Asaas (Mude para sandbox.asaas.com se for teste)
+    // URL Base do Asaas (Produção)
     $baseUrl = 'https://api.asaas.com/v3'; 
     $url = $baseUrl . ($endpoint[0] != '/' ? '/' : '') . $endpoint;
 
@@ -118,7 +126,8 @@ function callAsaas($endpoint, $method, $data, $apiKey) {
     
     $headers = [
         "Content-Type: application/json",
-        "access_token: " . trim($apiKey)
+        "access_token: " . trim($apiKey),
+        "User-Agent: FleetVision/1.0"
     ];
 
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
