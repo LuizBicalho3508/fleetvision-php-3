@@ -1,18 +1,24 @@
 RewriteEngine On
 
-# Força HTTPS (opcional, recomendado se tiver SSL)
-# RewriteCond %{HTTPS} off
-# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# 1. Mapeamento de Rotas da API (Redireciona URL bonita para o arquivo real)
+# A rota /api/auth/login vai carregar o api_login.php
+RewriteRule ^api/auth/login/?$ api_login.php [QSA,L]
 
-# Permite acesso à pasta api, assets e uploads diretamente
-RewriteRule ^(api|assets|uploads)($|/) - [L]
+# Outras rotas de API (adicione conforme necessário)
+RewriteRule ^api/ranking/?$ api_ranking.php [QSA,L]
+RewriteRule ^api/jornada/?$ api_jornada.php [QSA,L]
+RewriteRule ^api/alertas/?$ api_alertas.php [QSA,L]
+RewriteRule ^api/cercas/?$ api_cercas.php [QSA,L]
 
-# Bloqueia acesso direto a arquivos sensíveis
-RewriteRule ^(composer\.json|package\.json|\.env|\.git|config) - [F]
+# 2. Permite acesso direto a pastas de recursos estáticos
+# (Removemos 'api' daqui para que as regras acima funcionem)
+RewriteRule ^(assets|uploads)($|/) - [L]
 
-# Se o arquivo ou diretório existe fisicamente, serve ele
+# 3. Bloqueia acesso direto a arquivos sensíveis e de configuração
+RewriteRule ^(composer\.json|package\.json|\.env|\.git|config|db\.php) - [F]
+
+# 4. Roteamento Principal (Frontend - Dashboard)
+# Se não for arquivo nem diretório real, manda para o index.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-
-# Caso contrário, envia tudo para index.php
 RewriteRule ^ index.php [QSA,L]
