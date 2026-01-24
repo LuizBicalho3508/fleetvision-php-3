@@ -10,34 +10,32 @@ if (isset($_SESSION['user_id'])) {
 }
 
 // 1. Identifica o Tenant (Pela URL ou Padrão)
-// O Router normalmente define $tenantSlug se a URL for /cliente/login
+// O Router define $tenantSlug se a URL for /cliente/login
 $currentSlug = $tenantSlug ?? 'admin'; 
 $tenantData = null;
 
-// Busca dados do tenant para personalizar a tela
+// Busca dados do tenant para personalizar a tela (Opcional, falha silenciosa se não der)
 try {
-    // Conexão direta rápida apenas para pegar o estilo antes de carregar o JS
     $pdo = \App\Config\Database::getConnection();
     $stmt = $pdo->prepare("SELECT name, logo_url, login_bg_url, login_opacity, login_btn_color, primary_color FROM saas_tenants WHERE slug = ? LIMIT 1");
     $stmt->execute([$currentSlug]);
     $tenantData = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    // Falha silenciosa, usa padrão
+    // Falha silenciosa
 }
 
-// Define Estilos (Com Fallback)
+// Define Estilos
 $appName = $tenantData['name'] ?? 'FleetVision';
-$logoUrl = !empty($tenantData['logo_url']) ? '/' . $tenantData['logo_url'] : '/assets/img/logo_full.png'; // Caminho do logo padrão
-$bgUrl = !empty($tenantData['login_bg_url']) ? '/' . $tenantData['login_bg_url'] : '/assets/img/login_bg_default.jpg'; // Fundo padrão
+$logoUrl = !empty($tenantData['logo_url']) ? '/' . $tenantData['logo_url'] : '/assets/img/logo_full.png'; 
+$bgUrl = !empty($tenantData['login_bg_url']) ? '/' . $tenantData['login_bg_url'] : '/assets/img/login_bg_default.jpg';
 $cardOpacity = $tenantData['login_opacity'] ?? 0.95;
-$btnColor = $tenantData['login_btn_color'] ?? '#2563eb'; // Azul padrão
+$btnColor = $tenantData['login_btn_color'] ?? '#2563eb';
 $primaryColor = $tenantData['primary_color'] ?? '#2563eb';
 
-// Se não tiver imagem de fundo configurada, usa um gradiente padrão elegante
+// Estilo do Background
 $bgStyle = !empty($tenantData['login_bg_url']) 
     ? "background-image: url('$bgUrl'); background-size: cover; background-position: center;"
     : "background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);";
-
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -52,10 +50,7 @@ $bgStyle = !empty($tenantData['login_bg_url'])
     <style>
         body { font-family: 'Inter', sans-serif; }
         
-        /* Estilos Dinâmicos do Tenant */
-        .login-bg {
-            <?php echo $bgStyle; ?>
-        }
+        .login-bg { <?php echo $bgStyle; ?> }
         
         .glass-card {
             background-color: rgba(255, 255, 255, <?php echo $cardOpacity; ?>);
@@ -74,10 +69,7 @@ $bgStyle = !empty($tenantData['login_bg_url'])
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
 
-        /* Animação suave de entrada */
-        .fade-in-up {
-            animation: fadeInUp 0.5s ease-out;
-        }
+        .fade-in-up { animation: fadeInUp 0.5s ease-out; }
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
@@ -87,17 +79,11 @@ $bgStyle = !empty($tenantData['login_bg_url'])
 <body class="login-bg h-screen w-full flex items-center justify-center p-4">
 
     <div class="glass-card w-full max-w-md rounded-2xl shadow-2xl overflow-hidden fade-in-up">
-        
         <div class="p-8 md:p-10">
             <div class="text-center mb-8">
-                <?php if(file_exists(__DIR__ . '/../public' . $logoUrl) || strpos($logoUrl, 'http') === 0): ?>
-                    <img src="<?php echo $logoUrl; ?>" alt="<?php echo htmlspecialchars($appName); ?>" class="h-12 mx-auto object-contain mb-4">
-                <?php else: ?>
-                    <h1 class="text-3xl font-bold text-slate-800 tracking-tight">
-                        FLEET<span style="color: <?php echo $primaryColor; ?>">VISION</span>
-                    </h1>
-                <?php endif; ?>
-                
+                <h1 class="text-3xl font-bold text-slate-800 tracking-tight">
+                    FLEET<span style="color: <?php echo $primaryColor; ?>">VISION</span>
+                </h1>
                 <p class="text-slate-500 text-sm mt-2">Bem-vindo ao <?php echo htmlspecialchars($appName); ?></p>
             </div>
 
@@ -108,19 +94,18 @@ $bgStyle = !empty($tenantData['login_bg_url'])
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">E-mail Corporativo</label>
                     <div class="relative">
                         <i class="fas fa-envelope absolute left-4 top-3.5 text-slate-400"></i>
-                        <input type="email" name="email" class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-white/50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-slate-700" placeholder="seu@email.com" required autofocus>
+                        <input type="email" name="email" class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-white/50 focus:bg-white focus:border-blue-500 outline-none transition text-slate-700" placeholder="seu@email.com" required autofocus>
                     </div>
                 </div>
 
                 <div>
                     <div class="flex justify-between items-center mb-1 ml-1">
                         <label class="block text-xs font-bold text-slate-500 uppercase">Senha</label>
-                        <a href="/<?php echo $currentSlug; ?>/recover" class="text-xs font-medium text-blue-500 hover:text-blue-700 transition">Esqueceu a senha?</a>
+                        <a href="/sys/auth/recover" class="text-xs font-medium text-blue-500 hover:text-blue-700 transition">Esqueceu a senha?</a>
                     </div>
                     <div class="relative">
                         <i class="fas fa-lock absolute left-4 top-3.5 text-slate-400"></i>
-                        <input type="password" name="password" id="password" class="w-full pl-11 pr-12 py-3 rounded-xl border border-slate-200 bg-white/50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition text-slate-700" placeholder="••••••••" required>
-                        
+                        <input type="password" name="password" id="password" class="w-full pl-11 pr-12 py-3 rounded-xl border border-slate-200 bg-white/50 focus:bg-white focus:border-blue-500 outline-none transition text-slate-700" placeholder="••••••••" required>
                         <button type="button" onclick="togglePass()" class="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600 transition">
                             <i class="fas fa-eye" id="eyeIcon"></i>
                         </button>
@@ -146,7 +131,6 @@ $bgStyle = !empty($tenantData['login_bg_url'])
     </div>
 
     <script>
-        // Toggle Visibilidade da Senha
         function togglePass() {
             const input = document.getElementById('password');
             const icon = document.getElementById('eyeIcon');
@@ -161,7 +145,6 @@ $bgStyle = !empty($tenantData['login_bg_url'])
             }
         }
 
-        // Login via AJAX
         document.getElementById('loginForm').onsubmit = async (e) => {
             e.preventDefault();
             
@@ -170,7 +153,6 @@ $bgStyle = !empty($tenantData['login_bg_url'])
             const msgBox = document.getElementById('msgError');
             const msgText = document.getElementById('msgText');
 
-            // Estado de Carregamento
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Validando...';
             msgBox.classList.add('hidden');
@@ -178,16 +160,24 @@ $bgStyle = !empty($tenantData['login_bg_url'])
             const data = Object.fromEntries(new FormData(e.target));
 
             try {
-                const response = await fetch('/api/auth/login', {
+                // *** AQUI ESTÁ A CORREÇÃO PRINCIPAL ***
+                // Trocamos /api/auth/login por /sys/auth/login
+                const response = await fetch('/sys/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
 
-                const result = await response.json();
+                // Tenta ler o JSON. Se falhar, captura o texto para debug
+                const text = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(text);
+                } catch (err) {
+                    throw new Error("Erro do Servidor: " + text.substring(0, 50));
+                }
 
                 if (result.success) {
-                    // Sucesso: Redireciona
                     btn.innerHTML = '<i class="fas fa-check"></i> Sucesso!';
                     btn.classList.remove('btn-custom');
                     btn.classList.add('bg-green-500');
@@ -196,7 +186,6 @@ $bgStyle = !empty($tenantData['login_bg_url'])
                         window.location.href = result.redirect || '/<?php echo $currentSlug; ?>/dashboard';
                     }, 500);
                 } else {
-                    // Erro
                     throw new Error(result.error || 'Credenciais inválidas.');
                 }
 
@@ -204,20 +193,8 @@ $bgStyle = !empty($tenantData['login_bg_url'])
                 console.error(err);
                 msgText.innerText = err.message;
                 msgBox.classList.remove('hidden');
-                
-                // Shake Animation
-                const card = document.querySelector('.glass-card');
-                card.classList.add('animate-shake'); // Adicionar classe CSS se quiser
-                setTimeout(() => card.classList.remove('animate-shake'), 500);
-
             } finally {
-                if (!msgBox.classList.contains('hidden') || btn.innerHTML.includes('Sucesso')) {
-                    // Mantém estado de sucesso ou erro visível por um momento
-                    if(!btn.innerHTML.includes('Sucesso')) {
-                        btn.disabled = false;
-                        btn.innerHTML = originalContent;
-                    }
-                } else {
+                if (!msgBox.classList.contains('hidden') || !btn.innerHTML.includes('Sucesso')) {
                     btn.disabled = false;
                     btn.innerHTML = originalContent;
                 }

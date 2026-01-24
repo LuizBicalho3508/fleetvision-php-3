@@ -42,8 +42,17 @@ if (!function_exists('hasPermission')) {
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
     <script>
-        // --- FUNÇÃO API FETCH GLOBAL (CORREÇÃO DO ERRO JS) ---
+        // --- FUNÇÃO API FETCH GLOBAL (COM CORREÇÃO DE ROTA) ---
         async function apiFetch(endpoint, options = {}) {
+            // TRUQUE: Troca '/api/' por '/sys/' automaticamente
+            // Isso evita o conflito com o servidor Java/Traccar
+            if (endpoint.startsWith('/api/')) {
+                endpoint = endpoint.replace('/api/', '/sys/');
+            }
+            if (endpoint.startsWith('api/')) {
+                endpoint = endpoint.replace('api/', 'sys/');
+            }
+
             try {
                 const res = await fetch(endpoint, options);
                 
@@ -56,13 +65,14 @@ if (!function_exists('hasPermission')) {
                 // Trata 404
                 if (res.status === 404) {
                     console.error('API não encontrada:', endpoint);
-                    return { error: 'Recurso não encontrado (404)' };
+                    // Retorna erro amigável para não quebrar o JS
+                    return { error: 'Recurso não encontrado (404)', data: [] }; 
                 }
 
                 return await res.json();
             } catch (error) {
                 console.error('Erro na API:', error);
-                return { error: 'Erro de conexão' };
+                return { error: 'Erro de conexão', data: [] };
             }
         }
 
@@ -70,15 +80,10 @@ if (!function_exists('hasPermission')) {
         function showToast(msg, type = 'success') {
             const container = document.getElementById('toast-container') || document.body;
             const div = document.createElement('div');
-            
-            // Estilo do Toast
             const colorClass = type === 'success' ? 'bg-green-600' : 'bg-red-600';
             div.className = `fixed top-5 right-5 z-[9999] px-6 py-4 rounded-lg shadow-xl text-white font-bold transform transition-all duration-300 translate-y-0 opacity-100 flex items-center gap-3 ${colorClass}`;
             div.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> <span>${msg}</span>`;
-            
             container.appendChild(div);
-            
-            // Remove após 3 segundos
             setTimeout(() => {
                 div.style.opacity = '0';
                 div.style.transform = 'translateY(-20px)';

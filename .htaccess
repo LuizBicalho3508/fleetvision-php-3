@@ -1,24 +1,15 @@
-RewriteEngine On
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
 
-# 1. Mapeamento de Rotas da API (Redireciona URL bonita para o arquivo real)
-# A rota /api/auth/login vai carregar o api_login.php
-RewriteRule ^api/auth/login/?$ api_login.php [QSA,L]
+    # 1. Se o arquivo ou pasta existe fisicamente (imagens, css), acessa direto
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
 
-# Outras rotas de API (adicione conforme necessário)
-RewriteRule ^api/ranking/?$ api_ranking.php [QSA,L]
-RewriteRule ^api/jornada/?$ api_jornada.php [QSA,L]
-RewriteRule ^api/alertas/?$ api_alertas.php [QSA,L]
-RewriteRule ^api/cercas/?$ api_cercas.php [QSA,L]
+    # 2. Bloqueia acesso direto a arquivos de sistema/config
+    RewriteRule ^(composer\.json|package\.json|\.env|\.git|config|db\.php) - [F]
 
-# 2. Permite acesso direto a pastas de recursos estáticos
-# (Removemos 'api' daqui para que as regras acima funcionem)
-RewriteRule ^(assets|uploads)($|/) - [L]
-
-# 3. Bloqueia acesso direto a arquivos sensíveis e de configuração
-RewriteRule ^(composer\.json|package\.json|\.env|\.git|config|db\.php) - [F]
-
-# 4. Roteamento Principal (Frontend - Dashboard)
-# Se não for arquivo nem diretório real, manda para o index.php
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.php [QSA,L]
+    # 3. Todo o resto vai para o index.php (Front Controller)
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>

@@ -2,50 +2,43 @@
 namespace App\Controllers;
 
 use App\Config\Database;
+use Exception;
 
 class ApiController {
     protected $pdo;
     protected $tenant_id;
-    protected $user_id;
-    protected $user_role;
 
     public function __construct() {
+        // Garante sessão
         if (session_status() === PHP_SESSION_NONE) session_start();
-        
-        header('Content-Type: application/json; charset=utf-8');
-        header('Access-Control-Allow-Origin: *');
 
-        $this->pdo = Database::getConnection();
-
-        // Verificação Básica de Sessão
+        // 1. Verifica Login
         if (!isset($_SESSION['user_id'])) {
-            $this->json(['error' => 'Sessão expirada'], 403);
+            http_response_code(403);
+            echo json_encode(['error' => 'Sessão expirada']);
+            exit;
         }
 
+        // 2. Conecta ao Banco
+        try {
+            $this->pdo = Database::getConnection();
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Database connection failed']);
+            exit;
+        }
+
+        // 3. Define Tenant ID
+        // Se for Superadmin na rota /admin, usa o tenant_id da sessão (do login)
+        // Se for usuário comum, usa o tenant_id da sessão também.
+        // A segurança está no fato de que o tenant_id vem do banco no AuthController.
         $this->tenant_id = $_SESSION['tenant_id'];
-        $this->user_id = $_SESSION['user_id'];
-        $this->user_role = $_SESSION['user_role'] ?? 'user';
     }
 
     protected function json($data, $status = 200) {
         http_response_code($status);
+        header('Content-Type: application/json');
         echo json_encode($data);
         exit;
-    }
-
-    protected function getRestrictionSQL($alias = 'v') {
-        if ($this->user_role === 'admin' || $this->user_role === 'superadmin') {
-            return "";
-        }
-
-        // Lógica legada de cliente logado
-        $stmt = $this->pdo->prepare("SELECT customer_id FROM saas_users WHERE id = ?");
-        $stmt->execute([$this->user_id]);
-        $custId = $stmt->fetchColumn();
-
-        if ($custId) {
-            return " AND ($alias.client_id = $custId OR $alias.user_id = {$this->user_id})";
-        }
-        return " AND $alias.user_id = {$this->user_id}";
     }
 }

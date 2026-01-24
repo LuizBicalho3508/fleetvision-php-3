@@ -1,275 +1,187 @@
 ```markdown
-# 🚛 FleetVision Pro - Sistema de Gestão de Frotas (SaaS) v2.0
+# 🚛 FleetVision - Sistema de Gestão de Frotas (SaaS)
 
-O **FleetVision Pro** é uma plataforma robusta de rastreamento e gestão de frotas desenvolvida em PHP (Vanilla MVC), projetada para operar no modelo SaaS (Multi-tenant). O sistema integra-se nativamente com a API do **Traccar** e gateways de pagamento (**Asaas**).
+> Plataforma completa de rastreamento veicular e gestão de frotas, integrada ao Traccar, com arquitetura Multi-Tenant (SaaS).
+
+![Status](https://img.shields.io/badge/Status-Estável-green)
+![PHP](https://img.shields.io/badge/PHP-8.0%2B-blue)
+![Database](https://img.shields.io/badge/PostgreSQL-12%2B-336791)
+![Integration](https://img.shields.io/badge/Traccar-API-orange)
+
+## 📋 Sobre o Projeto
+
+O **FleetVision** é um sistema web desenvolvido em PHP (MVC Nativo) para monitoramento em tempo real e gestão administrativa de frotas. Ele consome a API do **Traccar** para dados de GPS e oferece uma camada de gestão robusta para empresas de rastreamento.
+
+### 🚀 Principais Funcionalidades
+
+* **Rastreamento em Tempo Real:** Visualização de veículos no mapa (OpenStreetMap/Google) com atualização ao vivo.
+* **Gestão de Frotas:** Cadastro completo de veículos, motoristas, manutenções e pneus.
+* **Módulo Financeiro:** Controle de receitas (mensalidades) e despesas da frota.
+* **Multi-Tenant (SaaS):** Suporte para múltiplas empresas/clientes no mesmo sistema, com dados isolados.
+* **Painel Administrativo:** Gestão de clientes (Tenants), configuração de planos e personalização (Whitelabel).
+* **API Interna (/sys):** Endpoints JSON para comunicação com o Frontend e Apps Mobile.
+* **Landing Page Integrada:** Página de apresentação do produto pronta para conversão.
 
 ---
 
-## 🚀 Tecnologias Utilizadas
+## 🛠️ Tecnologias Utilizadas
 
-* **Backend:** PHP 8.1+ (Puro, sem frameworks pesados).
-* **Frontend:** HTML5, JavaScript (Vanilla ES6+), TailwindCSS.
-* **Banco de Dados:** PostgreSQL 13+.
-* **Mapas:** Leaflet JS + OpenStreetMap.
-* **Integrações:** Traccar API (Rastreamento), Asaas (Financeiro).
-* **Arquitetura:** MVC Modulada (API Restful + Views isoladas).
+* **Backend:** PHP 8+ (Estrutura MVC Personalizada).
+* **Frontend:** HTML5, JavaScript (Vanilla), TailwindCSS (CDN).
+* **Banco de Dados:** PostgreSQL (Compatível com estrutura Traccar).
+* **Servidor de Mapas:** Traccar (via API).
+* **Servidor Web:** Apache (com `mod_rewrite`) ou Nginx.
 
 ---
 
-## 📂 Estrutura de Diretórios (Atualizada)
+## 📂 Estrutura de Diretórios
 
 ```text
-/var/www/fleetvision/
-├── api/                    # Backend (Lógica de Negócios)
-│   ├── controllers/        # Controladores (Auth, Dashboard, Device, etc.)
-│   └── router.php          # Roteador Central da API
-├── api.php                 # Proxy de Entrada da API (Raiz)
-├── config/                 # Configurações Globais
-│   ├── app.php             # Variáveis de Ambiente e URL
-│   └── db.php              # Conexão Singleton (PDO)
-├── pages/                  # Views (Frontend HTML/PHP)
-│   ├── login.php           # Tela de Login
-│   ├── dashboard_*.php     # Dashboards por nível de acesso
-│   └── ...                 # Outras páginas do sistema
-├── includes/               # Componentes Visuais (Header, Sidebar)
-├── assets/                 # Arquivos Estáticos (CSS, JS, Imagens)
-├── uploads/                # Uploads de Usuários (Logos, Avatares)
-└── index.php               # Front Controller (Roteamento de Páginas)
+/
+├── app/                  # Núcleo da Aplicação
+│   ├── Config/           # Configurações de Banco de Dados
+│   ├── Controllers/      # Lógica de Negócio (MVC)
+│   ├── Core/             # Roteador e Classes Base
+│   ├── Middleware/       # Filtros de Acesso (Auth)
+│   └── Services/         # Integrações (TraccarApi, Asaas)
+├── views/                # Telas e Templates (HTML/PHP)
+├── public/               # (Opcional) Assets públicos
+├── uploads/              # Imagens e Logos dos Clientes
+├── .htaccess             # Regras de Roteamento (Apache)
+├── index.php             # Ponto de Entrada (Front Controller)
+├── setup_db.php          # Script de Instalação do Banco
+└── traccar_config.json   # Credenciais da API Traccar
 
 ```
 
 ---
 
-## 🗄️ Banco de Dados (Schema Completo)
+## ⚙️ Pré-requisitos
 
-O sistema utiliza **PostgreSQL**. Abaixo está o script SQL completo para criar a estrutura, incluindo as tabelas do sistema SaaS e suas relações.
-
-> **Nota:** As tabelas nativas do Traccar (`tc_devices`, `tc_positions`, `tc_events`) não estão listadas aqui, pois são gerenciadas pelo próprio Traccar, mas o sistema faz amarrações lógicas através do ID do dispositivo.
-
-### 1. Tabela de Tenants (Clientes/Empresas)
-
-Armazena as configurações de cada empresa que usa o sistema (White-label).
-
-```sql
-CREATE TABLE saas_tenants (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    slug VARCHAR(100) NOT NULL UNIQUE, -- Identificador na URL (ex: /cliente-a)
-    document VARCHAR(20),              -- CNPJ/CPF
-    email VARCHAR(255),
-    phone VARCHAR(50),
-    
-    -- Personalização White-label
-    logo_url TEXT,
-    background_url TEXT,               -- Imagem de fundo do login
-    primary_color VARCHAR(7) DEFAULT '#3b82f6',
-    secondary_color VARCHAR(7) DEFAULT '#1e293b',
-    
-    active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Índices para performance
-CREATE INDEX idx_tenants_slug ON saas_tenants(slug);
-
-```
-
-### 2. Tabela de Perfis de Acesso (Roles)
-
-Define o que cada grupo de usuários pode fazer dentro de um Tenant.
-
-```sql
-CREATE TABLE saas_roles (
-    id SERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL,
-    name VARCHAR(50) NOT NULL,
-    permissions JSONB DEFAULT '[]', -- Lista de permissões: ['dashboard', 'frota_view', 'bloqueio']
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Amarração: Se o tenant for deletado, os perfis somem
-    CONSTRAINT fk_roles_tenant 
-        FOREIGN KEY (tenant_id) 
-        REFERENCES saas_tenants (id) 
-        ON DELETE CASCADE
-);
-
-```
-
-### 3. Tabela de Usuários
-
-Usuários do sistema, vinculados a um Tenant e um Perfil.
-
-```sql
-CREATE TABLE saas_users (
-    id SERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL,
-    role_id INTEGER, -- Pode ser NULL se for SuperAdmin
-    
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    password VARCHAR(255) NOT NULL, -- Hash Bcrypt
-    avatar_url TEXT,
-    
-    active BOOLEAN DEFAULT TRUE,
-    is_superadmin BOOLEAN DEFAULT FALSE, -- Acesso global ao sistema
-    
-    last_login TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP, -- Soft Delete
-    
-    -- Amarrações
-    CONSTRAINT fk_users_tenant 
-        FOREIGN KEY (tenant_id) 
-        REFERENCES saas_tenants (id) 
-        ON DELETE CASCADE,
-        
-    CONSTRAINT fk_users_role 
-        FOREIGN KEY (role_id) 
-        REFERENCES saas_roles (id) 
-        ON DELETE SET NULL,
-
-    -- Garante e-mail único por Tenant (ou global, dependendo da regra de negócio)
-    CONSTRAINT uq_email_tenant UNIQUE (email, tenant_id)
-);
-
-```
-
-### 4. Tabela de Filiais (Opcional)
-
-Sub-divisões dentro de um Tenant.
-
-```sql
-CREATE TABLE saas_branches (
-    id SERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    address TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT fk_branches_tenant 
-        FOREIGN KEY (tenant_id) 
-        REFERENCES saas_tenants (id) 
-        ON DELETE CASCADE
-);
-
-```
-
-### 5. Tabela de Veículos (Extensão do Traccar)
-
-Armazena dados adicionais que o Traccar não guarda nativamente (ex: Financeiro, Manutenção).
-
-```sql
-CREATE TABLE saas_vehicles (
-    id SERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL,
-    branch_id INTEGER,
-    
-    traccar_device_id INTEGER NOT NULL UNIQUE, -- Vínculo com tabela tc_devices do Traccar
-    
-    plate VARCHAR(20),
-    model VARCHAR(100),
-    brand VARCHAR(100),
-    color VARCHAR(50),
-    year INTEGER,
-    renavam VARCHAR(50),
-    
-    status VARCHAR(20) DEFAULT 'active', -- active, maintenance, inactive
-    
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT fk_vehicles_tenant 
-        FOREIGN KEY (tenant_id) 
-        REFERENCES saas_tenants (id) 
-        ON DELETE CASCADE
-);
-
-```
-
-### 6. Configurações Financeiras (Asaas)
-
-Credenciais de pagamento por Tenant.
-
-```sql
-CREATE TABLE saas_financial_config (
-    id SERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL UNIQUE,
-    api_key TEXT NOT NULL,
-    wallet_id VARCHAR(100),
-    is_sandbox BOOLEAN DEFAULT TRUE,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT fk_fin_config_tenant 
-        FOREIGN KEY (tenant_id) 
-        REFERENCES saas_tenants (id) 
-        ON DELETE CASCADE
-);
-
-```
-
-### 7. Cache de Endereços (Geocoding)
-
-Evita chamadas repetidas à API de mapas (Nominatim/Google) para economizar custos/limites.
-
-```sql
-CREATE TABLE saas_address_cache (
-    id SERIAL PRIMARY KEY,
-    lat DECIMAL(10, 8) NOT NULL,
-    lon DECIMAL(11, 8) NOT NULL,
-    address TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Garante unicidade da coordenada (com precisão ajustada)
-    CONSTRAINT uq_lat_lon UNIQUE (lat, lon)
-);
-
-```
+1. **Servidor Web:** Apache ou Nginx.
+2. **PHP:** Versão 8.0 ou superior (extensões `pdo`, `pdo_pgsql`, `curl` habilitadas).
+3. **Banco de Dados:** PostgreSQL (o mesmo utilizado pelo Traccar).
+4. **Traccar:** Instância do Traccar rodando (padrão: porta 8082).
 
 ---
 
-## 🛠️ Instalação e Configuração
+## 🚀 Guia de Instalação
 
-1. **Requisitos:**
-* Servidor Web (Apache/Nginx)
-* PHP 8.1+ com extensões `pdo_pgsql`, `curl`, `json`.
-* PostgreSQL.
+### 1. Clonar o Repositório
 
-
-2. **Configuração:**
-Edite o arquivo `config/app.php`:
-```php
-define('APP_URL', '[https://seusite.com](https://seusite.com)');
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'traccar');
-define('DB_USER', 'postgres');
-define('DB_PASS', 'senha');
-
-```
-
-
-3. **Permissões:**
-Certifique-se de que a pasta `uploads/` tem permissão de escrita:
 ```bash
-chmod -R 775 uploads/
-chown -R www-data:www-data uploads/
+git clone [https://seu-repositorio.git](https://seu-repositorio.git) fleetvision
+cd fleetvision
 
 ```
 
+### 2. Configurar o Banco de Dados
 
+O sistema utiliza a conexão definida em `app/Config/Database.php`.
+Certifique-se de que o usuário do banco tenha permissão para criar tabelas.
+
+### 3. Configurar Integração Traccar
+
+Edite (ou crie) o arquivo `traccar_config.json` na raiz:
+
+```json
+{
+    "url": "http://localhost:8082",
+    "email": "admin",
+    "password": "admin"
+}
+
+```
+
+### 4. Permissões de Pasta
+
+Dê permissão de escrita para a pasta de uploads:
+
+```bash
+chmod -R 777 uploads/
+
+```
+
+### 5. Instalação Automática (Setup)
+
+Acesse a seguinte URL no navegador para criar as tabelas e o usuário administrador automaticamente:
+
+```
+[https://seu-dominio.com/setup_db.php](https://seu-dominio.com/setup_db.php)
+
+```
+
+*Após ver a mensagem de "SUCESSO", remova este arquivo por segurança.*
 
 ---
 
-## 🔄 Fluxo de Autenticação
+## 🖥️ Acesso ao Sistema
 
-1. Usuário acessa `/admin/login` (ou `/cliente/login`).
-2. Frontend envia POST para `/api.php?action=login`.
-3. `AuthController` verifica credenciais e status do Tenant.
-4. Se sucesso, cria Sessão PHP segura e retorna JSON com redirecionamento.
-5. `index.php` verifica a sessão e carrega a View correspondente em `pages/`.
+### Login Padrão (Super Admin)
+
+* **URL:** `/login`
+* **E-mail:** `admin@fleet.com`
+* **Senha:** `password`
+
+### Rotas Importantes
+
+* **Landing Page:** `/` (Raiz)
+* **Login:** `/login`
+* **Dashboard:** `/admin/dashboard`
+* **Documentação API:** `/api_docs`
+* **Diagnóstico:** `/admin_teste`
 
 ---
 
-© 2026 FleetVision Pro - Todos os direitos reservados.
+## 🔧 Configuração do Servidor Web
+
+### Apache (.htaccess)
+
+O arquivo `.htaccess` já está incluso na raiz. Certifique-se de que o `mod_rewrite` está ativo no seu Apache.
+
+```apache
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+```
+
+### Nginx (Exemplo de Configuração)
+
+```nginx
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+
+# Proteção de Arquivos Sensíveis
+location ~ ^/(app|config|includes|vendor|\.env|\.git) {
+    deny all;
+    return 404;
+}
+
+```
+
+---
+
+## 🐛 Diagnóstico e Solução de Problemas
+
+Se encontrar erros 404 ou 500:
+
+1. Acesse **`/admin_teste`** para rodar o diagnóstico automático de rotas e banco de dados.
+2. Verifique se o arquivo `app/Config/Database.php` está apontando para o banco correto.
+3. Se a API retornar 404, verifique se o prefixo `/sys` está sendo usado corretamente no Javascript (`views/layout.php`).
+
+---
+
+## 📄 Licença
+
+Este projeto é proprietário e desenvolvido para uso comercial.
+Todos os direitos reservados a **FleetVision**.
 
 ```
 
