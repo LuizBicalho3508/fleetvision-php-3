@@ -2,206 +2,292 @@
 
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Gestão de Ativos</h1>
-            <p class="text-sm text-slate-500">Controle de estoque e manutenções da frota.</p>
+            <h1 class="text-2xl font-bold text-slate-800">Estoque de Rastreadores</h1>
+            <p class="text-sm text-slate-500">Gestão completa de equipamentos e chips.</p>
         </div>
-        
-        <div class="bg-slate-200 p-1 rounded-xl flex">
-            <button onclick="switchTab('stock')" id="btn-stock" class="px-4 py-2 rounded-lg text-sm font-bold transition bg-white text-slate-800 shadow-sm">Estoque</button>
-            <button onclick="switchTab('maint')" id="btn-maint" class="px-4 py-2 rounded-lg text-sm font-bold transition text-slate-500 hover:text-slate-700">Manutenções</button>
+        <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition flex items-center gap-2 transform hover:-translate-y-0.5">
+            <i class="fas fa-plus"></i>
+            <span>Novo Dispositivo</span>
+        </button>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div class="relative group">
+            <i class="fas fa-search absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-500 transition"></i>
+            <input type="text" id="searchInput" placeholder="Buscar por Serial (IMEI), Modelo ou ICCID..." class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 outline-none transition font-medium text-slate-700">
         </div>
     </div>
 
-    <div id="tab-stock" class="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div class="flex justify-end">
-            <button onclick="openItemModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2">
-                <i class="fas fa-box-open"></i> Novo Item
-            </button>
-        </div>
-        
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
-                <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
+                <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-6 py-3">Item</th>
-                        <th class="px-6 py-3">Categoria</th>
-                        <th class="px-6 py-3">Quantidade</th>
-                        <th class="px-6 py-3">Custo Unit.</th>
-                        <th class="px-6 py-3 text-right">Ações</th>
+                        <th class="px-6 py-4">Equipamento</th>
+                        <th class="px-6 py-4">Serial (IMEI)</th>
+                        <th class="px-6 py-4">Conectividade</th>
+                        <th class="px-6 py-4">Status</th>
+                        <th class="px-6 py-4 text-right">Ações</th>
                     </tr>
                 </thead>
-                <tbody id="stockGrid" class="divide-y divide-slate-100"></tbody>
+                <tbody id="stockTable" class="divide-y divide-slate-100">
+                    <tr><td colspan="5" class="p-10 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i><br>Carregando estoque...</td></tr>
+                </tbody>
             </table>
         </div>
-    </div>
-
-    <div id="tab-maint" class="hidden space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div class="flex justify-end">
-            <button onclick="openMaintModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2">
-                <i class="fas fa-tools"></i> Registrar Manutenção
-            </button>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-                    <tr>
-                        <th class="px-6 py-3">Data</th>
-                        <th class="px-6 py-3">Veículo</th>
-                        <th class="px-6 py-3">Serviço</th>
-                        <th class="px-6 py-3">Valor</th>
-                        <th class="px-6 py-3">Odômetro</th>
-                    </tr>
-                </thead>
-                <tbody id="maintGrid" class="divide-y divide-slate-100"></tbody>
-            </table>
+        <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+            <span class="text-xs text-slate-400" id="totalCount">0 registros</span>
         </div>
     </div>
 </div>
 
-<div id="modalItem" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-        <h3 class="font-bold text-lg mb-4">Item de Estoque</h3>
-        <form id="formItem" class="space-y-3">
-            <input type="hidden" name="id" id="itemId">
-            <input type="text" name="item_name" id="itemName" placeholder="Nome do Item" class="w-full border p-2 rounded-lg" required>
-            <select name="category" id="itemCat" class="w-full border p-2 rounded-lg bg-white">
-                <option value="tracker">Rastreador</option>
-                <option value="simcard">Chip M2M</option>
-                <option value="part">Peça/Pneu</option>
-                <option value="other">Outro</option>
-            </select>
-            <div class="grid grid-cols-2 gap-3">
-                <input type="number" name="quantity" id="itemQty" placeholder="Qtd" class="w-full border p-2 rounded-lg" required>
-                <input type="number" name="min_quantity" id="itemMin" placeholder="Mínimo" class="w-full border p-2 rounded-lg" value="5">
+<div id="stockModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-8 scale-100 transition-transform duration-300">
+        
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h3 class="text-xl font-bold text-slate-800" id="modalTitle">Novo Rastreador</h3>
+                <p class="text-xs text-slate-500 mt-1">Preencha os dados do equipamento.</p>
             </div>
-            <input type="number" step="0.01" name="unit_cost" id="itemCost" placeholder="Custo Unitário (R$)" class="w-full border p-2 rounded-lg">
-            
-            <div class="flex justify-end gap-2 mt-4">
-                <button type="button" onclick="closeModals()" class="px-4 py-2 text-slate-500">Cancelar</button>
-                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">Salvar</button>
-            </div>
-        </form>
-    </div>
-</div>
+            <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 transition flex items-center justify-center">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <form id="formStock" class="space-y-5">
+            <input type="hidden" name="id" id="inputId">
 
-<div id="modalMaint" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-        <h3 class="font-bold text-lg mb-4">Nova Manutenção</h3>
-        <form id="formMaint" class="space-y-3">
-            <select name="vehicle_id" id="maintVehicle" class="w-full border p-2 rounded-lg bg-white" required>
-                <option value="">Carregando veículos...</option>
-            </select>
-            <input type="text" name="service_type" placeholder="Tipo (ex: Troca de Óleo)" class="w-full border p-2 rounded-lg" required>
-            <textarea name="description" placeholder="Detalhes do serviço..." class="w-full border p-2 rounded-lg"></textarea>
-            <div class="grid grid-cols-2 gap-3">
-                <input type="date" name="service_date" class="w-full border p-2 rounded-lg" required>
-                <input type="number" step="0.01" name="cost" placeholder="Valor Total (R$)" class="w-full border p-2 rounded-lg" required>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Marca</label>
+                    <input type="text" name="brand" id="inputBrand" placeholder="Ex: Suntech" class="w-full border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Modelo <span class="text-red-500">*</span></label>
+                    <input type="text" name="model" id="inputModel" placeholder="Ex: ST310U" required class="w-full border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 outline-none transition font-bold text-slate-700">
+                </div>
             </div>
-            <input type="number" name="odometer" placeholder="KM Atual" class="w-full border p-2 rounded-lg">
-            
-            <div class="flex justify-end gap-2 mt-4">
-                <button type="button" onclick="closeModals()" class="px-4 py-2 text-slate-500">Cancelar</button>
-                <button type="submit" class="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold">Registrar</button>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">IMEI (Serial) <span class="text-red-500">*</span></label>
+                <div class="relative">
+                    <i class="fas fa-barcode absolute left-3 top-3 text-slate-400"></i>
+                    <input type="text" name="imei" id="inputImei" required class="w-full pl-10 border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 outline-none font-mono tracking-wider text-slate-700 font-bold bg-slate-50 focus:bg-white transition" placeholder="Apenas números">
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1 ml-1">Este serial será sincronizado automaticamente com o Traccar.</p>
+            </div>
+
+            <div class="bg-slate-50 p-5 rounded-xl border border-slate-200/60 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-2 opacity-5">
+                    <i class="fas fa-sim-card text-6xl"></i>
+                </div>
+                <h4 class="text-xs font-bold text-blue-600 mb-4 flex items-center gap-2">
+                    <i class="fas fa-sim-card"></i> DADOS DO CHIP (SIM CARD)
+                </h4>
+                
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Operadora</label>
+                        <select name="operator" id="inputOperator" class="w-full border border-slate-300 rounded-lg p-2.5 bg-white focus:border-blue-500 outline-none cursor-pointer">
+                            <option value="">Selecione...</option>
+                            <option value="Vivo">Vivo</option>
+                            <option value="Claro">Claro</option>
+                            <option value="Tim">Tim</option>
+                            <option value="Algar">Algar</option>
+                            <option value="M2M">M2M Multi</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Linha (Tel)</label>
+                        <input type="text" name="line_number" id="inputLine" placeholder="DD + Número" class="w-full border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">ICCID (Serial do Chip)</label>
+                    <input type="text" name="iccid" id="inputIccid" class="w-full border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 outline-none font-mono text-slate-600">
+                </div>
+            </div>
+
+            <div class="pt-2 flex gap-3">
+                <button type="button" onclick="closeModal()" class="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition">Cancelar</button>
+                <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-200 transition transform active:scale-95">
+                    <i class="fas fa-check mr-2"></i> Salvar Dados
+                </button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-    // --- Tabs Logic ---
-    function switchTab(tab) {
-        document.getElementById('tab-stock').classList.add('hidden');
-        document.getElementById('tab-maint').classList.add('hidden');
-        document.getElementById('btn-stock').className = 'px-4 py-2 rounded-lg text-sm font-bold transition text-slate-500 hover:text-slate-700';
-        document.getElementById('btn-maint').className = 'px-4 py-2 rounded-lg text-sm font-bold transition text-slate-500 hover:text-slate-700';
-        
-        document.getElementById('tab-' + tab).classList.remove('hidden');
-        document.getElementById('btn-' + tab).className = 'px-4 py-2 rounded-lg text-sm font-bold transition bg-white text-slate-800 shadow-sm';
-        
-        if(tab === 'stock') loadStock();
-        else loadMaint();
-    }
+    let stockList = [];
 
-    // --- Estoque ---
     async function loadStock() {
-        const res = await apiFetch('/api/stock');
-        const grid = document.getElementById('stockGrid');
-        if(!res || !res.data) return;
-        
-        grid.innerHTML = res.data.map(i => {
-            const lowStock = i.quantity <= i.min_quantity ? '<span class="text-xs bg-red-100 text-red-600 px-2 rounded font-bold ml-2">Baixo</span>' : '';
-            return `
-            <tr class="hover:bg-slate-50">
-                <td class="px-6 py-3 font-bold text-slate-700">${i.item_name}</td>
-                <td class="px-6 py-3 capitalize text-slate-500">${i.category}</td>
-                <td class="px-6 py-3 font-mono">${i.quantity} ${lowStock}</td>
-                <td class="px-6 py-3 text-slate-600">R$ ${i.unit_cost}</td>
-                <td class="px-6 py-3 text-right">
-                    <button onclick="deleteItem(${i.id})" class="text-slate-300 hover:text-red-500"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>`;
-        }).join('');
-    }
-
-    document.getElementById('formItem').onsubmit = async (e) => {
-        e.preventDefault();
-        const data = Object.fromEntries(new FormData(e.target));
-        const res = await apiFetch('/api/stock/save', { method: 'POST', body: JSON.stringify(data) });
-        if(res.success) { closeModals(); loadStock(); showToast('Item salvo!'); }
-    };
-
-    function deleteItem(id) {
-        if(confirm('Excluir item?')) {
-            apiFetch('/api/stock/delete', { method: 'POST', body: JSON.stringify({id}) }).then(() => loadStock());
+        const res = await apiFetch('/sys/stock');
+        if (res.data) {
+            stockList = res.data;
+            renderTable(stockList);
+        } else {
+            document.getElementById('stockTable').innerHTML = '<tr><td colspan="5" class="p-8 text-center text-red-400">Erro ao carregar dados.</td></tr>';
         }
     }
 
-    // --- Manutenção ---
-    async function loadMaint() {
-        const res = await apiFetch('/api/maintenance');
-        const grid = document.getElementById('maintGrid');
-        
-        grid.innerHTML = res.data.map(m => `
-            <tr class="hover:bg-slate-50">
-                <td class="px-6 py-3 text-xs text-slate-500 font-mono">${m.formatted_date}</td>
-                <td class="px-6 py-3 font-bold text-slate-700">${m.plate}</td>
-                <td class="px-6 py-3">${m.service_type}</td>
-                <td class="px-6 py-3 font-bold text-orange-600">${m.formatted_cost}</td>
-                <td class="px-6 py-3 text-xs font-mono">${m.odometer} km</td>
+    function renderTable(list) {
+        const tbody = document.getElementById('stockTable');
+        document.getElementById('totalCount').innerText = `${list.length} registros`;
+
+        if (list.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="p-12 text-center text-slate-400">
+                        <div class="flex flex-col items-center">
+                            <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300 text-2xl">
+                                <i class="fas fa-box-open"></i>
+                            </div>
+                            <p>Nenhum rastreador no estoque.</p>
+                            <button onclick="openModal()" class="mt-4 text-blue-600 font-bold text-sm hover:underline">Cadastrar o primeiro</button>
+                        </div>
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        tbody.innerHTML = list.map(item => `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-50 group">
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-lg shadow-sm">
+                            <i class="fas fa-satellite-dish"></i>
+                        </div>
+                        <div>
+                            <div class="font-bold text-slate-700">${item.model}</div>
+                            <div class="text-xs text-slate-400 font-medium">${item.brand || 'Genérico'}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="font-mono text-sm font-bold text-slate-700 tracking-wide bg-slate-100 inline-block px-2 py-1 rounded border border-slate-200">
+                        <i class="fas fa-barcode text-slate-400 mr-1 text-xs"></i>
+                        ${item.imei || 'SEM SERIAL'}
+                    </div>
+                </td>
+                <td class="px-6 py-4">
+                    ${item.operator ? 
+                        `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 shadow-sm text-xs font-bold text-slate-700">
+                            <div class="w-2 h-2 rounded-full bg-green-500"></div> ${item.operator}
+                         </span>` : 
+                        '<span class="text-slate-300 text-xs">-</span>'}
+                    <div class="text-xs text-slate-400 mt-1 font-mono tracking-tight" title="ICCID">${item.iccid || ''}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${item.status === 'available' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}">
+                        <span class="w-1.5 h-1.5 rounded-full ${item.status === 'available' ? 'bg-emerald-500' : 'bg-indigo-500'}"></span>
+                        ${item.status === 'available' ? 'Disponível' : 'Em Uso'}
+                    </span>
+                </td>
+                <td class="px-6 py-4 text-right">
+                    <div class="flex justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button onclick='editDevice(${JSON.stringify(item)})' 
+                                class="bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 text-slate-500 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition flex items-center gap-2">
+                            <i class="fas fa-pen"></i> <span class="hidden md:inline">Editar</span>
+                        </button>
+                        <button onclick="deleteDevice(${item.id})" 
+                                class="bg-white border border-slate-200 hover:border-red-300 hover:text-red-600 text-slate-500 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition flex items-center gap-2">
+                            <i class="fas fa-trash"></i> <span class="hidden md:inline">Excluir</span>
+                        </button>
+                    </div>
+                </td>
             </tr>
         `).join('');
     }
 
-    document.getElementById('formMaint').onsubmit = async (e) => {
+    // --- SALVAR (Create ou Update) ---
+    document.getElementById('formStock').onsubmit = async (e) => {
         e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Salvando...';
+        btn.disabled = true;
+
         const data = Object.fromEntries(new FormData(e.target));
-        const res = await apiFetch('/api/maintenance/save', { method: 'POST', body: JSON.stringify(data) });
-        if(res.success) { closeModals(); loadMaint(); showToast('Manutenção registrada!'); }
+        const hasId = !!data.id;
+        
+        // Define Rota: POST (novo) ou POST update (edição)
+        // Nota: Seu router pode não ter PUT configurado, então usamos POST para tudo ou uma rota específica
+        const endpoint = hasId ? '/sys/stock/update' : '/sys/stock'; 
+        
+        // IMPORTANTE: Adicione a rota '/sys/stock/update' no index.php apontando para StockController::update
+
+        try {
+            const res = await apiFetch(endpoint, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            if (res.success) {
+                showToast(hasId ? 'Atualizado com sucesso!' : 'Cadastrado com sucesso!');
+                closeModal();
+                loadStock();
+            } else {
+                showToast(res.error || 'Erro ao salvar', 'error');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('Erro de conexão', 'error');
+        } finally {
+            btn.innerHTML = original;
+            btn.disabled = false;
+        }
     };
 
-    // --- Helpers ---
-    async function openMaintModal() {
-        // Carrega veículos para o select
-        const res = await apiFetch('/api/dashboard/data');
-        const sel = document.getElementById('maintVehicle');
-        sel.innerHTML = '<option value="">Selecione...</option>';
-        res.forEach(v => sel.innerHTML += `<option value="${v.id}">${v.plate} - ${v.name}</option>`);
+    // --- DELETAR ---
+    async function deleteDevice(id) {
+        if(!confirm('Tem certeza? O dispositivo será removido do sistema e do Traccar.')) return;
         
-        document.getElementById('formMaint').reset();
-        document.getElementById('modalMaint').classList.remove('hidden');
+        const res = await apiFetch('/sys/stock/delete', {
+            method: 'POST',
+            body: JSON.stringify({ id })
+        });
+        
+        if(res.success) { showToast('Dispositivo removido.'); loadStock(); }
+        else { showToast(res.error || 'Erro ao remover', 'error'); }
     }
 
-    function openItemModal() {
-        document.getElementById('formItem').reset();
-        document.getElementById('itemId').value = '';
-        document.getElementById('modalItem').classList.remove('hidden');
+    // --- EDITAR ---
+    window.editDevice = (item) => {
+        document.getElementById('modalTitle').innerText = 'Editar Rastreador';
+        document.getElementById('inputId').value = item.id;
+        document.getElementById('inputBrand').value = item.brand || '';
+        document.getElementById('inputModel').value = item.model || '';
+        document.getElementById('inputImei').value = item.imei || '';
+        document.getElementById('inputOperator').value = item.operator || '';
+        document.getElementById('inputLine').value = item.line_number || '';
+        document.getElementById('inputIccid').value = item.iccid || '';
+        
+        document.getElementById('stockModal').classList.remove('hidden');
+    }
+
+    // Filtro
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        const filtered = stockList.filter(i => 
+            (i.imei && i.imei.includes(term)) || 
+            (i.iccid && i.iccid.includes(term)) ||
+            (i.model && i.model.toLowerCase().includes(term))
+        );
+        renderTable(filtered);
+    });
+
+    function openModal() {
+        document.getElementById('formStock').reset();
+        document.getElementById('inputId').value = '';
+        document.getElementById('modalTitle').innerText = 'Novo Rastreador';
+        document.getElementById('stockModal').classList.remove('hidden');
     }
     
-    function closeModals() {
-        document.getElementById('modalItem').classList.add('hidden');
-        document.getElementById('modalMaint').classList.add('hidden');
+    function closeModal() {
+        document.getElementById('stockModal').classList.add('hidden');
     }
 
-    loadStock(); // Inicia na aba estoque
+    loadStock();
 </script>

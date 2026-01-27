@@ -1,15 +1,14 @@
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteBase /
+Options -Indexes
+RewriteEngine On
 
-    # 1. Se o arquivo ou pasta existe fisicamente (imagens, css), acessa direto
-    RewriteCond %{REQUEST_FILENAME} -f [OR]
-    RewriteCond %{REQUEST_FILENAME} -d
-    RewriteRule ^ - [L]
+# Força HTTPS (Opcional, descomente se usar SSL)
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-    # 2. Bloqueia acesso direto a arquivos de sistema/config
-    RewriteRule ^(composer\.json|package\.json|\.env|\.git|config|db\.php) - [F]
+# Libera acesso direto a arquivos reais (imagens, css, js)
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_FILENAME} !\.php$
+RewriteRule ^ - [L]
 
-    # 3. Todo o resto vai para o index.php (Front Controller)
-    RewriteRule ^ index.php [QSA,L]
-</IfModule>
+# Todo o resto vai para index.php
+RewriteRule ^ index.php [QSA,L]

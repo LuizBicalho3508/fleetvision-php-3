@@ -1,156 +1,268 @@
-<div class="p-6 space-y-6">
-
-    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+<div class="p-6 space-y-6 h-full flex flex-col">
+    
+    <div class="flex justify-between items-center shrink-0">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Central de Alertas</h1>
-            <p class="text-sm text-slate-500">Histórico de eventos e infrações da frota.</p>
+            <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Central de Alertas</h1>
+            <p class="text-sm text-slate-500">Gerencie suas notificações e visualize o registro de eventos.</p>
         </div>
-        <button onclick="alert('Funcionalidade futura: Exportar PDF/Excel')" class="text-slate-500 hover:text-blue-600 font-bold text-sm flex items-center gap-2 transition">
-            <i class="fas fa-download"></i> Exportar
-        </button>
     </div>
 
-    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-        <form id="filterForm" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-            
-            <div class="md:col-span-2">
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Período</label>
-                <div class="flex gap-2">
-                    <input type="datetime-local" name="start" id="dateStart" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none">
-                    <input type="datetime-local" name="end" id="dateEnd" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none">
+    <div class="border-b border-slate-200 shrink-0">
+        <nav class="-mb-px flex gap-8">
+            <button onclick="switchTab('config')" id="tab-config-btn" class="group inline-flex items-center py-4 px-1 border-b-2 border-blue-600 font-bold text-sm text-blue-600 transition-all">
+                <i class="fas fa-cog mr-2 group-hover:rotate-90 transition-transform"></i> Configuração
+            </button>
+            <button onclick="switchTab('history')" id="tab-history-btn" class="group inline-flex items-center py-4 px-1 border-b-2 border-transparent font-bold text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-all">
+                <i class="fas fa-history mr-2 text-slate-400 group-hover:text-slate-600"></i> Histórico
+            </button>
+        </nav>
+    </div>
+
+    <div class="flex-1 overflow-y-auto custom-scrollbar p-1">
+        
+        <div id="tab-config" class="max-w-4xl mx-auto py-4 animate-fade-in">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-6 border-b border-slate-100 bg-slate-50/50">
+                    <h3 class="font-bold text-lg text-slate-800">Preferências de Alerta</h3>
+                    <p class="text-sm text-slate-500 mt-1">Escolha quais eventos devem gerar popup na tela e aviso sonoro.</p>
+                </div>
+
+                <form id="alertConfigForm" class="divide-y divide-slate-100">
+                    <div class="flex items-center justify-between p-5 hover:bg-slate-50 transition">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-green-100 text-green-600 flex items-center justify-center text-xl shadow-sm">
+                                <i class="fas fa-key"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-slate-700">Ignição (Ligada/Desligada)</div>
+                                <div class="text-xs text-slate-400">Notificar quando o veículo for ligado ou desligado.</div>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="ignition" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div class="flex items-center justify-between p-5 hover:bg-slate-50 transition">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-xl shadow-sm">
+                                <i class="fas fa-tachometer-alt"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-slate-700">Excesso de Velocidade</div>
+                                <div class="text-xs text-slate-400">Quando ultrapassar o limite definido no cadastro do veículo.</div>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="overspeed" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div class="flex items-center justify-between p-5 hover:bg-slate-50 transition">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl shadow-sm">
+                                <i class="fas fa-draw-polygon"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-slate-700">Cercas Virtuais</div>
+                                <div class="text-xs text-slate-400">Entrada e saída de perímetros monitorados.</div>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="geofence" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div class="flex items-center justify-between p-5 hover:bg-slate-50 transition">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center text-xl shadow-sm">
+                                <i class="fas fa-car-battery"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-slate-700">Bateria & Violação</div>
+                                <div class="text-xs text-slate-400">Corte de bateria, alarme de pânico ou violação.</div>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="power" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div class="flex items-center justify-between p-5 hover:bg-slate-50 transition">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-yellow-100 text-yellow-600 flex items-center justify-center text-xl shadow-sm">
+                                <i class="fas fa-tools"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-slate-700">Lembretes de Manutenção</div>
+                                <div class="text-xs text-slate-400">Troca de óleo, pneus e revisões programadas.</div>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="maintenance" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                        </label>
+                    </div>
+
+                    <div class="p-6 bg-slate-50 rounded-b-2xl">
+                        <button type="submit" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-slate-300 transition transform active:scale-[0.99] flex items-center justify-center gap-2">
+                            <i class="fas fa-save"></i> Salvar Preferências
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="tab-history" class="hidden h-full flex flex-col animate-fade-in">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden">
+                <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-4 items-center justify-between bg-slate-50/50">
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <div class="relative w-full sm:w-auto">
+                            <i class="fas fa-calendar absolute left-3 top-2.5 text-slate-400"></i>
+                            <input type="date" id="historyDateInput" class="pl-9 border border-slate-300 rounded-xl p-2 text-sm outline-none focus:border-blue-500 shadow-sm w-full">
+                        </div>
+                        <button onclick="loadHistory()" class="bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-md shadow-blue-100">
+                            Filtrar
+                        </button>
+                    </div>
+                    <div class="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                        <span id="totalEvents">0</span> Eventos Encontrados
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto custom-scrollbar">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="px-6 py-4">Horário</th>
+                                <th class="px-6 py-4">Evento</th>
+                                <th class="px-6 py-4">Veículo / Placa</th>
+                                <th class="px-6 py-4">Cliente</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody" class="divide-y divide-slate-50">
+                            <tr><td colspan="4" class="p-12 text-center text-slate-400">Carregando dados...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Veículo</label>
-                <select id="vehicleSelect" name="device_id" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none">
-                    <option value="">Todos os Veículos</option>
-                </select>
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Tipo de Evento</label>
-                <select id="typeSelect" name="type" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none">
-                    <option value="">Todos os Tipos</option>
-                    <option value="deviceOverspeed">Excesso de Velocidade</option>
-                    <option value="geofenceEnter">Entrada de Cerca</option>
-                    <option value="geofenceExit">Saída de Cerca</option>
-                    <option value="ignitionOn">Ignição Ligada</option>
-                    <option value="ignitionOff">Ignição Desligada</option>
-                    <option value="alarm">Alarmes/SOS</option>
-                </select>
-            </div>
-
-            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg shadow-blue-200 transition h-[38px]">
-                <i class="fas fa-filter mr-1"></i> Filtrar
-            </button>
-        </form>
-    </div>
-
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-                    <tr>
-                        <th class="px-6 py-4">Data/Hora</th>
-                        <th class="px-6 py-4">Veículo</th>
-                        <th class="px-6 py-4">Evento</th>
-                        <th class="px-6 py-4">Detalhes</th>
-                        <th class="px-6 py-4 text-right">Local</th>
-                    </tr>
-                </thead>
-                <tbody id="alertsGrid" class="divide-y divide-slate-100">
-                    <tr><td colspan="5" class="p-8 text-center text-slate-400">Selecione os filtros e clique em buscar.</td></tr>
-                </tbody>
-            </table>
         </div>
     </div>
 </div>
 
 <script>
-    // 1. Inicialização de Datas (Hoje)
-    const now = new Date();
-    const start = new Date(); start.setHours(0,0,0,0);
-    const end = new Date(); end.setHours(23,59,59,999);
-    
-    const toISO = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + 'T' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-    
-    document.getElementById('dateStart').value = toISO(start);
-    document.getElementById('dateEnd').value = toISO(end);
+    // --- LÓGICA DE TABS ---
+    function switchTab(tab) {
+        document.getElementById('tab-config').classList.toggle('hidden', tab !== 'config');
+        document.getElementById('tab-history').classList.toggle('hidden', tab !== 'history');
+        
+        // Estilos Botões
+        const btnConfig = document.getElementById('tab-config-btn');
+        const btnHistory = document.getElementById('tab-history-btn');
 
-    // 2. Carregar Veículos
-    async function loadVehicles() {
-        const vehicles = await apiFetch('/api/dashboard/data'); 
-        const sel = document.getElementById('vehicleSelect');
-        if(vehicles) {
-            vehicles.forEach(v => {
-                sel.innerHTML += `<option value="${v.id}">${v.plate} - ${v.name}</option>`;
-            });
+        if (tab === 'config') {
+            btnConfig.className = 'group inline-flex items-center py-4 px-1 border-b-2 border-blue-600 font-bold text-sm text-blue-600 transition-all';
+            btnHistory.className = 'group inline-flex items-center py-4 px-1 border-b-2 border-transparent font-bold text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-all';
+        } else {
+            btnConfig.className = 'group inline-flex items-center py-4 px-1 border-b-2 border-transparent font-bold text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-all';
+            btnHistory.className = 'group inline-flex items-center py-4 px-1 border-b-2 border-blue-600 font-bold text-sm text-blue-600 transition-all';
+            loadHistory(); // Carrega histórico ao clicar na aba
         }
     }
-    loadVehicles();
 
-    // 3. Buscar Alertas
-    document.getElementById('filterForm').onsubmit = async (e) => {
+    // --- CONFIGURAÇÃO ---
+    async function loadConfig() {
+        const res = await apiFetch('/sys/alerts/settings');
+        if(res.data) {
+            const form = document.getElementById('alertConfigForm');
+            for(const [key, val] of Object.entries(res.data)) {
+                if(form[key]) form[key].checked = val;
+            }
+        }
+    }
+
+    document.getElementById('alertConfigForm').onsubmit = async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button[type="submit"]');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Salvando...'; btn.disabled = true;
 
-        const params = new URLSearchParams(new FormData(e.target));
-        // Ajuste manual de datas para formato SQL se necessário, mas controller aceita ISO do input datetime-local
-        
+        const data = {};
+        // Captura todos os checkboxes
+        ['ignition', 'overspeed', 'geofence', 'power', 'maintenance'].forEach(k => {
+            const input = e.target.elements[k];
+            data[k] = input ? input.checked : false;
+        });
+
         try {
-            const res = await apiFetch(`/api/alerts?${params.toString()}`);
-            const tbody = document.getElementById('alertsGrid');
-            
-            if (!res || !res.data || res.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-400">Nenhum alerta encontrado neste período.</td></tr>';
-            } else {
-                tbody.innerHTML = res.data.map(row => {
-                    // Ícone baseado no tipo
-                    let icon = 'fa-bell text-slate-400';
-                    let bg = 'bg-slate-100';
-                    if(row.type.includes('Overspeed')) { icon = 'fa-tachometer-alt text-red-500'; bg = 'bg-red-50'; }
-                    else if(row.type.includes('geofence')) { icon = 'fa-map-marker-alt text-orange-500'; bg = 'bg-orange-50'; }
-                    else if(row.type.includes('ignitionOn')) { icon = 'fa-key text-green-500'; bg = 'bg-green-50'; }
-                    else if(row.type.includes('alarm')) { icon = 'fa-exclamation-triangle text-red-600 animate-pulse'; bg = 'bg-red-100'; }
-
-                    // Detalhes extras (velocidade, cerca)
-                    let details = '-';
-                    if (row.speed > 0) details = Math.round(row.speed * 1.852) + ' km/h'; // Converter nós para km/h se vier cru do banco
-                    if (row.attrs && row.attrs.geofenceId) details += ' (Cerca ID: ' + row.attrs.geofenceId + ')';
-
-                    return `
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="px-6 py-4 font-mono text-xs text-slate-500">${row.formatted_time}</td>
-                            <td class="px-6 py-4 font-bold text-slate-700">${row.plate}</td>
-                            <td class="px-6 py-4">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-8 h-8 rounded-full ${bg} flex items-center justify-center shadow-sm">
-                                        <i class="fas ${icon}"></i>
-                                    </div>
-                                    <span class="text-sm font-medium text-slate-700">${row.type_label}</span>
-                                </div>
-                            </td>
-                            <td class="px-6 py-4 text-xs text-slate-500">${details}</td>
-                            <td class="px-6 py-4 text-right">
-                                <a href="https://www.google.com/maps?q=${row.latitude},${row.longitude}" target="_blank" class="text-blue-500 hover:text-blue-700 font-bold text-xs">
-                                    <i class="fas fa-map-marked-alt mr-1"></i> Ver no Mapa
-                                </a>
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-        } catch(err) {
-            console.error(err);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-filter mr-1"></i> Filtrar';
-        }
+            const res = await apiFetch('/sys/alerts/settings', { method: 'POST', body: JSON.stringify(data) });
+            if(res.success) showToast('Preferências salvas com sucesso!');
+            else showToast('Erro ao salvar', 'error');
+        } catch(e) { showToast('Erro de conexão', 'error'); } 
+        finally { btn.innerHTML = originalHtml; btn.disabled = false; }
     };
-    
-    // Auto-carregar ao abrir (opcional, pode pesar se tiver muitos dados, melhor esperar filtro)
-    // document.getElementById('filterForm').requestSubmit();
+
+    // --- HISTÓRICO ---
+    async function loadHistory() {
+        const dateInput = document.getElementById('historyDateInput');
+        if(!dateInput.value) dateInput.valueAsDate = new Date();
+        
+        const date = dateInput.value;
+        const tbody = document.getElementById('historyTableBody');
+        tbody.innerHTML = '<tr><td colspan="4" class="p-12 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin text-3xl mb-3 text-blue-300"></i><p>Buscando eventos...</p></td></tr>';
+
+        try {
+            const res = await apiFetch(`/sys/alerts/history?date=${date}`);
+            
+            if (!res.data || res.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-12 text-center text-slate-400 bg-slate-50/50"><i class="fas fa-bell-slash text-3xl mb-3 opacity-50"></i><p>Nenhum alerta registrado nesta data.</p></td></tr>';
+                document.getElementById('totalEvents').innerText = '0';
+                return;
+            }
+
+            document.getElementById('totalEvents').innerText = res.data.length;
+
+            tbody.innerHTML = res.data.map(alert => `
+                <tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0 group">
+                    <td class="px-6 py-4">
+                        <div class="font-bold text-slate-700 font-mono">${alert.time}</div>
+                        <div class="text-[10px] text-slate-400">${alert.date}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border bg-${alert.color}-50 text-${alert.color}-700 border-${alert.color}-200 shadow-sm">
+                            <i class="fas ${alert.icon}"></i> ${alert.title}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="font-bold text-slate-800">${alert.plate}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-2 text-slate-600">
+                            <div class="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                ${alert.customer.charAt(0)}
+                            </div>
+                            <span class="text-sm">${alert.customer}</span>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-red-400">Erro: ${e.message || 'Falha ao buscar'}</td></tr>`;
+        }
+    }
+
+    // Inicialização
+    loadConfig();
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('historyDateInput').valueAsDate = new Date();
+    });
 </script>
+
+<style>
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+</style>

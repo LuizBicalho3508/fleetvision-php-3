@@ -9,20 +9,22 @@ class Database {
     private $pdo;
 
     private function __construct() {
-        $host = '127.0.0.1';
-        $port = '5432';
-        $db   = 'traccar';
-        $user = 'traccar';
-        $pass = 'traccar';
+        // Carrega configurações
+        $config = require __DIR__ . '/../../config.php';
+        $db = $config['db'];
 
         try {
-            $dsn = "pgsql:host=$host;port=$port;dbname=$db";
-            $this->pdo = new PDO($dsn, $user, $pass);
+            $dsn = "pgsql:host={$db['host']};port={$db['port']};dbname={$db['name']}";
+            $this->pdo = new PDO($dsn, $db['user'], $db['pass']);
             $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false); // Importante para segurança
         } catch (PDOException $e) {
+            // Retorna JSON válido em caso de erro para não quebrar o fetch do JS
+            header('Content-Type: application/json');
             http_response_code(500);
-            die(json_encode(['error' => 'Erro crítico de conexão: ' . $e->getMessage()]));
+            echo json_encode(['error' => 'Falha na conexão com o Banco de Dados.']);
+            exit;
         }
     }
 

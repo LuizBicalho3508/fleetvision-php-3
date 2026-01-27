@@ -1,56 +1,129 @@
 <?php
 namespace App\Controllers;
 
+use App\Services\TraccarService;
 use PDO;
 use Exception;
 
 class DashboardController extends ApiController {
 
-    // Retorna os indicadores (Cards do topo)
+    public function index() {
+        $viewName = 'dashboard';
+        if (file_exists(__DIR__ . '/../../views/layout.php')) {
+            require __DIR__ . '/../../views/layout.php';
+        } else {
+            require __DIR__ . '/../../views/dashboard.php';
+        }
+    }
+
+    // KPI: Cards do Topo (Totais, Ativos, Motoristas)
     public function getKpis() {
         try {
-            // 1. Total de Veículos
-            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM saas_vehicles WHERE tenant_id = ? AND status = 'active'");
-            $stmt->execute([$this->tenant_id]);
-            $totalVehicles = $stmt->fetchColumn();
+            if (!isset($_SESSION['tenant_id'])) {
+                $this->json(['error' => 'Sessão expirada'], 401);
+                return;
+            }
+            $tenantId = $_SESSION['tenant_id'];
+            $userCustomerId = $_SESSION['user_customer_id'] ?? null; // Isolamento
 
-            // 2. Veículos Online (Exemplo simples: considera online se tem 'motion' true na última posição)
-            // Para maior precisão, precisaríamos cruzar com a tabela tc_positions do Traccar
-            // Aqui faremos uma contagem baseada nos veículos cadastrados por enquanto
-            
-            // Simulação de status online/offline baseada em conexão recente
-            // (Na prática, você faria um JOIN com tc_devices e tc_positions)
-            $online = 0;
-            $offline = 0;
-            
-            // Busca devices do Traccar vinculados
-            $stmtDev = $this->pdo->prepare("SELECT traccar_device_id FROM saas_vehicles WHERE tenant_id = ?");
-            $stmtDev->execute([$this->tenant_id]);
-            $deviceIds = $stmtDev->fetchAll(PDO::FETCH_COLUMN);
+            // 1. Veículos (Total e Ativos)
+            $sqlTotal = "SELECT COUNT(*) FROM saas_vehicles WHERE tenant_id = ? AND status = 'active'";
+            $paramsTotal = [$tenantId];
 
-            if (!empty($deviceIds)) {
-                $idsStr = implode(',', $deviceIds);
-                // Consulta direta nas tabelas do Traccar (tc_devices)
-                $sqlTraccar = "SELECT status FROM tc_devices WHERE id IN ($idsStr)";
-                $stmtTc = $this->pdo->query($sqlTraccar);
-                $statuses = $stmtTc->fetchAll(PDO::FETCH_COLUMN);
-                
-                foreach ($statuses as $st) {
-                    if ($st === 'online') $online++;
-                    else $offline++;
-                }
+            if ($userCustomerId) {
+                $sqlTotal .= " AND customer_id = ?";
+                $paramsTotal[] = $userCustomerId;
             }
 
-            // 3. Motoristas
-            $stmtDrv = $this->pdo->prepare("SELECT COUNT(*) FROM saas_drivers WHERE tenant_id = ?");
-            $stmtDrv->execute([$this->tenant_id]);
-            $totalDrivers = $stmtDrv->fetchColumn();
+            $stmt = $this->pdo->prepare($sqlTotal);
+            $stmt->execute($paramsTotal);
+            $totalVehicles = $stmt->fetchColumn();
+
+            // 2. Motoristas
+            $sqlDrivers = "SELECT COUNT(*) FROM saas_drivers WHERE tenant_id = ? AND status = 'active'";
+            $paramsDrivers = [$tenantId];
+
+            if ($userCustomerId) {
+                $sqlDrivers .= " AND customer_id = ?";
+                $paramsDrivers[] = $userCustomerId;
+            }
+
+            $stmtDr = $this->pdo->prepare($sqlDrivers);
+            $stmtDr->execute($paramsDrivers);
+            $totalDrivers = $stmtDr->fetchColumn();
+
+            // 3. Status Real-Time (Via Traccar)
+            // Precisamos buscar os devices para contar online/offline/ignição
+            // Se o usuário for isolado, precisamos filtrar esses devices
+            $online = 0;
+            $offline = 0;
+            $ignitionOn = 0;
+
+            try {
+                // Busca lista de IDs de veículos permitidos para este usuário
+                $sqlIds = "SELECT identifier, imei FROM saas_vehicles WHERE tenant_id = ? AND status = 'active'";
+                $paramsIds = [$tenantId];
+                if ($userCustomerId) {
+                    $sqlIds .= " AND customer_id = ?";
+                    $paramsIds[] = $userCustomerId;
+                }
+                $stmtIds = $this->pdo->prepare($sqlIds);
+                $stmtIds->execute($paramsIds);
+                $myVehicles = $stmtIds->fetchAll(PDO::FETCH_ASSOC);
+
+                // Cria mapa de identificadores permitidos
+                $allowedUniqueIds = [];
+                foreach ($myVehicles as $v) {
+                    $key = preg_replace('/[^0-9]/', '', $v['identifier'] ?? $v['imei']);
+                    if ($key) $allowedUniqueIds[$key] = true;
+                }
+
+                if (count($allowedUniqueIds) > 0) {
+                    $traccar = new TraccarService();
+                    $positions = $traccar->getPositions(); // Pega última posição de todos
+                    $devices   = $traccar->getDevices();   // Pega status (online/offline)
+
+                    // Mapa de Status
+                    $deviceStatusMap = [];
+                    foreach ($devices as $d) {
+                        $deviceStatusMap[$d['id']] = $d['status']; // 'online', 'offline', 'unknown'
+                        $deviceUniqueIdMap[$d['id']] = $d['uniqueId'];
+                    }
+
+                    foreach ($positions as $pos) {
+                        $deviceId = $pos['deviceId'];
+                        $uniqueId = $deviceUniqueIdMap[$deviceId] ?? null;
+
+                        // SÓ CONTA SE O VEÍCULO PERTENCER AO USUÁRIO/CLIENTE
+                        if ($uniqueId && isset($allowedUniqueIds[$uniqueId])) {
+                            
+                            // Status Online/Offline
+                            $status = $deviceStatusMap[$deviceId] ?? 'offline';
+                            if ($status === 'online') $online++; else $offline++;
+
+                            // Ignição
+                            $attrs = $pos['attributes'] ?? [];
+                            $ign = false;
+                            if (isset($attrs['ignition'])) $ign = (bool) $attrs['ignition'];
+                            elseif (isset($attrs['motion'])) $ign = (bool) $attrs['motion'];
+                            
+                            if ($ign) $ignitionOn++;
+                        }
+                    }
+                }
+
+            } catch (Exception $eTraccar) {
+                // Se o Traccar falhar, não quebra o dashboard, mostra zeros
+                error_log("Erro Traccar Dashboard: " . $eTraccar->getMessage());
+            }
 
             $this->json([
                 'total_vehicles' => $totalVehicles,
-                'online_vehicles' => $online,
-                'offline_vehicles' => $offline, // Fallback se $online for 0
-                'total_drivers' => $totalDrivers
+                'total_drivers' => $totalDrivers,
+                'online' => $online,
+                'offline' => $offline,
+                'ignition_on' => $ignitionOn,
+                'ignition_off' => $totalVehicles - $ignitionOn
             ]);
 
         } catch (Exception $e) {
@@ -58,96 +131,34 @@ class DashboardController extends ApiController {
         }
     }
 
-    // Retorna os dados da tabela principal
+    // Gráficos e Tabelas Rápidas
     public function getData() {
         try {
-            $sql = "SELECT v.id, v.name, v.plate, v.traccar_device_id, 
-                           d.name as driver_name,
-                           b.name as branch_name
-                    FROM saas_vehicles v
-                    LEFT JOIN saas_drivers d ON v.driver_id = d.id
-                    LEFT JOIN saas_branches b ON v.branch_id = b.id
-                    WHERE v.tenant_id = ? 
-                    ORDER BY v.name ASC";
+            if (!isset($_SESSION['tenant_id'])) return;
+            $tenantId = $_SESSION['tenant_id'];
+            $userCustomerId = $_SESSION['user_customer_id'] ?? null;
+
+            // 1. Veículos por Status (Gráfico Donut)
+            // Vamos simular dados baseados no banco se não tiver histórico de alertas ainda
             
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$this->tenant_id]);
-            $vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Exemplo: Alertas Recentes (Últimos 5)
+            // Se você tiver uma tabela saas_alerts, descomente e ajuste
+            /*
+            $sqlAlerts = "SELECT a.*, v.plate FROM saas_alerts a 
+                          JOIN saas_vehicles v ON a.vehicle_id = v.id 
+                          WHERE a.tenant_id = ? ORDER BY a.created_at DESC LIMIT 5";
+            // Adicionar filtro customer_id aqui também...
+            */
 
-            // Enriquece com dados do Traccar (última posição) se possível
-            // Aqui retornamos o básico para a tabela carregar rápido
-            // O frontend pode buscar o status realtime via socket ou polling no /api/mapa
-
-            $this->json(['data' => $vehicles]);
+            // Retorno Mock (Placeholder) até você criar as tabelas de Alertas/Histórico
+            // Isso evita o erro 500 enquanto o sistema cresce
+            $this->json([
+                'alerts_recent' => [], 
+                'km_driven_week' => [120, 150, 180, 200, 90, 110, 130] // Dados Dummy para gráfico
+            ]);
 
         } catch (Exception $e) {
             $this->json(['error' => $e->getMessage()], 500);
         }
-    }
-
-    // Retorna alertas recentes (Notificações)
-    public function getAlerts() {
-        try {
-            // Se você tiver uma tabela de logs de eventos, use aqui.
-            // Exemplo usando tc_events do Traccar cruzado com os devices do tenant
-            
-            $stmtDev = $this->pdo->prepare("SELECT traccar_device_id FROM saas_vehicles WHERE tenant_id = ?");
-            $stmtDev->execute([$this->tenant_id]);
-            $deviceIds = $stmtDev->fetchAll(PDO::FETCH_COLUMN);
-
-            if (empty($deviceIds)) {
-                $this->json(['data' => []]);
-                return;
-            }
-
-            $idsStr = implode(',', $deviceIds);
-            
-            // Busca últimos 5 eventos
-            $sqlEvents = "SELECT e.id, e.type, e.servertime, d.name as device_name 
-                          FROM tc_events e
-                          JOIN tc_devices d ON e.deviceid = d.id
-                          WHERE e.deviceid IN ($idsStr)
-                          ORDER BY e.servertime DESC LIMIT 5";
-            
-            $stmtEv = $this->pdo->query($sqlEvents);
-            $events = $stmtEv->fetchAll(PDO::FETCH_ASSOC);
-
-            // Tradução simples
-            foreach ($events as &$ev) {
-                $ev['type_label'] = $this->translateType($ev['type']);
-                $ev['time_ago'] = $this->timeAgo($ev['servertime']);
-            }
-
-            $this->json(['data' => $events]);
-
-        } catch (Exception $e) {
-            // Retorna vazio em caso de erro para não quebrar o dashboard
-            $this->json(['data' => []]);
-        }
-    }
-
-    private function translateType($type) {
-        $map = [
-            'deviceOnline' => 'Ficou Online',
-            'deviceOffline' => 'Ficou Offline',
-            'deviceMoving' => 'Em Movimento',
-            'deviceStopped' => 'Parou',
-            'deviceOverspeed' => 'Excesso de Velocidade',
-            'geofenceEnter' => 'Entrou na Cerca',
-            'geofenceExit' => 'Saiu da Cerca',
-            'ignitionOn' => 'Ignição Ligada',
-            'ignitionOff' => 'Ignição Desligada'
-        ];
-        return $map[$type] ?? $type;
-    }
-
-    private function timeAgo($datetime) {
-        $time = strtotime($datetime);
-        $diff = time() - $time;
-        
-        if ($diff < 60) return 'Agora';
-        if ($diff < 3600) return floor($diff / 60) . ' min atrás';
-        if ($diff < 86400) return floor($diff / 3600) . 'h atrás';
-        return date('d/m H:i', $time);
     }
 }

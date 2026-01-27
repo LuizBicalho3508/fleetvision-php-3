@@ -1,134 +1,234 @@
-<div class="p-6 space-y-6">
-
-    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+<div class="p-6 space-y-6 h-full flex flex-col">
+    
+    <div class="flex justify-between items-center shrink-0">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Usuários do Sistema</h1>
-            <p class="text-sm text-slate-500">Controle quem tem acesso à plataforma.</p>
+            <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Gerenciamento de Usuários</h1>
+            <p class="text-sm text-slate-500">Controle quem acessa o sistema, seus perfis e permissões de frota.</p>
         </div>
-        <button onclick="openUserModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition flex items-center gap-2">
-            <i class="fas fa-user-plus"></i> Adicionar Usuário
+        <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition flex items-center gap-2">
+            <i class="fas fa-user-plus"></i> Novo Usuário
         </button>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="usersGrid">
-        <div class="col-span-3 text-center py-10 text-slate-400">Carregando usuários...</div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
+        <div class="overflow-x-auto custom-scrollbar flex-1">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-slate-50 text-slate-500 font-bold uppercase text-xs sticky top-0 z-10 shadow-sm">
+                    <tr>
+                        <th class="px-6 py-4 w-10"></th>
+                        <th class="px-6 py-4">Nome / E-mail</th>
+                        <th class="px-6 py-4">Perfil de Acesso</th>
+                        <th class="px-6 py-4">Visibilidade (Cliente)</th>
+                        <th class="px-6 py-4">Status</th>
+                        <th class="px-6 py-4 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="usersBody" class="divide-y divide-slate-50">
+                    <tr><td colspan="6" class="p-12 text-center text-slate-400">Carregando...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
-
 </div>
 
-<div id="modalUser" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-            <h3 class="font-bold text-slate-800 text-lg">Usuário</h3>
-            <button onclick="document.getElementById('modalUser').classList.add('hidden')" class="text-slate-400 hover:text-red-500 transition"><i class="fas fa-times text-xl"></i></button>
+<div id="userModal" class="fixed inset-0 z-[60] hidden">
+    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white w-full max-w-lg rounded-2xl shadow-2xl p-8 scale-100 transition-transform">
+        
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-bold text-slate-800" id="modalTitle">Novo Usuário</h3>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
         </div>
-        <form id="formUser" class="p-6 space-y-4">
-            <input type="hidden" name="id" id="userId">
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label>
-                <input type="text" name="name" id="userName" class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:border-blue-500 outline-none transition" required>
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                <input type="email" name="email" id="userEmail" class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:border-blue-500 outline-none transition" required>
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Senha</label>
-                <input type="password" name="password" placeholder="Deixe vazio para manter" class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:border-blue-500 outline-none transition">
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Perfil de Acesso</label>
-                <select name="role_id" id="userRole" class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:border-blue-500 bg-white outline-none transition">
-                    <option value="">Carregando...</option>
-                </select>
-            </div>
-            <div class="flex items-center gap-2 pt-2">
-                <input type="checkbox" name="active" id="userActive" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" checked>
-                <label for="userActive" class="text-sm text-slate-600">Usuário Ativo</label>
-            </div>
+
+        <form id="formUser" class="space-y-5">
+            <input type="hidden" name="id" id="inputId">
             
-            <div class="pt-4 flex justify-end gap-3">
-                <button type="button" onclick="document.getElementById('modalUser').classList.add('hidden')" class="px-5 py-2.5 rounded-xl text-slate-500 hover:bg-slate-100 font-bold text-sm transition">Cancelar</button>
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-blue-200 transition">Salvar</button>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label>
+                    <input type="text" name="name" id="inputName" required class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 transition">
+                </div>
+                
+                <div class="col-span-2">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">E-mail de Acesso</label>
+                    <input type="email" name="email" id="inputEmail" required class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 transition">
+                </div>
+
+                <div class="col-span-2">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Senha <span id="passHint" class="text-[10px] text-slate-400 font-normal lowercase">(deixe em branco para manter)</span></label>
+                    <input type="password" name="password" id="inputPassword" class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 transition" placeholder="******">
+                </div>
+            </div>
+
+            <div class="border-t border-slate-100 pt-4 grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Perfil (Função)</label>
+                    <select name="role_id" id="inputRole" class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 bg-white transition cursor-pointer">
+                        <option value="">-- Selecione --</option>
+                    </select>
+                    <p class="text-[10px] text-slate-400 mt-1">Define o que ele pode <b>fazer</b>.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Vincular Cliente</label>
+                    <select name="customer_id" id="inputCustomer" class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 bg-white transition cursor-pointer">
+                        <option value="">Acesso Global (Todos)</option>
+                    </select>
+                    <p class="text-[10px] text-slate-400 mt-1">Define o que ele pode <b>ver</b>.</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 pt-2">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="status" id="inputStatus" value="active" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    <span class="ml-3 text-sm font-medium text-slate-600">Usuário Ativo</span>
+                </label>
+            </div>
+
+            <div class="pt-4 flex gap-3">
+                <button type="button" onclick="closeModal()" class="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl transition">Cancelar</button>
+                <button type="submit" class="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-200 transition">Salvar Usuário</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-    async function loadData() {
-        const [users, roles] = await Promise.all([
-            apiFetch('/api/users'),
-            apiFetch('/api/roles')
-        ]);
+    let rolesList = [];
+    let customersList = [];
 
-        const roleSelect = document.getElementById('userRole');
-        roleSelect.innerHTML = '<option value="">Sem Perfil definido</option>' + 
-            roles.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
-
-        const grid = document.getElementById('usersGrid');
+    async function loadUsers() {
+        const tbody = document.getElementById('usersBody');
         
-        if(!users || users.length === 0) {
-            grid.innerHTML = '<div class="col-span-3 text-center text-slate-400">Nenhum usuário encontrado.</div>';
-            return;
-        }
+        try {
+            const res = await apiFetch('/sys/users');
+            
+            rolesList = res.roles || [];
+            customersList = res.customers || [];
+            updateModalSelects();
 
-        grid.innerHTML = users.map(u => `
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-300 hover:shadow-md transition group relative">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-lg border border-slate-200">
-                        ${u.name.substr(0,2).toUpperCase()}
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <h4 class="font-bold text-slate-800 truncate">${u.name}</h4>
-                        <p class="text-xs text-slate-400 truncate">${u.email}</p>
-                        <span class="inline-block mt-1 text-[10px] uppercase font-bold tracking-wider ${u.role_name ? 'text-blue-600' : 'text-slate-400'}">
-                            ${u.role_name || 'Sem Perfil'}
-                        </span>
-                    </div>
-                </div>
+            // Flag vinda do backend
+            const isSuperAdmin = res.is_superadmin || false;
+
+            if(!res.users || res.users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-12 text-center text-slate-400">Nenhum usuário encontrado.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = res.users.map(u => {
+                const initials = u.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
                 
-                <div class="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition">
-                    <button onclick='editUser(${JSON.stringify(u)})' class="text-slate-400 hover:text-blue-600 transition p-1"><i class="fas fa-pen"></i></button>
-                    <button onclick="deleteUser(${u.id})" class="text-slate-400 hover:text-red-600 transition p-1"><i class="fas fa-trash"></i></button>
-                </div>
+                const roleBadge = u.role_name 
+                    ? `<span class="bg-purple-50 text-purple-700 px-2 py-1 rounded-md text-xs font-bold border border-purple-100">${u.role_name}</span>`
+                    : `<span class="bg-slate-100 text-slate-500 px-2 py-1 rounded-md text-xs font-bold">Sem Perfil</span>`;
 
-                ${u.active == 0 ? '<div class="absolute inset-0 bg-white/60 backdrop-blur-[1px] rounded-2xl flex items-center justify-center"><span class="bg-red-100 text-red-600 px-3 py-1 rounded-full text-xs font-bold">Inativo</span></div>' : ''}
-            </div>
-        `).join('');
+                const customerBadge = u.customer_name
+                    ? `<span class="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-xs font-bold border border-blue-100"><i class="fas fa-building text-[10px]"></i> ${u.customer_name}</span>`
+                    : `<span class="flex items-center gap-1 text-slate-400 text-xs italic"><i class="fas fa-globe text-slate-300"></i> Acesso Global</span>`;
+
+                const statusColor = u.status === 'active' ? 'text-green-500' : 'text-red-400';
+
+                // --- NOVO: BADGE DE TENANT (EMPRESA) ---
+                // Só aparece se for Superadmin e o usuário pertencer a um tenant diferente do atual da sessão (opcional) ou sempre.
+                let tenantBadge = '';
+                if (isSuperAdmin && u.tenant_name) {
+                    tenantBadge = `<div class="mt-1"><span class="bg-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider">${u.tenant_name}</span></div>`;
+                }
+
+                return `
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0 group">
+                        <td class="px-6 py-4">
+                            <div class="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-xs">
+                                ${initials}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="font-bold text-slate-700">${u.name}</div>
+                            <div class="text-xs text-slate-400">${u.email}</div>
+                            ${tenantBadge} </td>
+                        <td class="px-6 py-4">${roleBadge}</td>
+                        <td class="px-6 py-4">${customerBadge}</td>
+                        <td class="px-6 py-4">
+                            <i class="fas fa-circle ${statusColor} text-[8px]"></i>
+                            <span class="text-xs ml-1 text-slate-600 capitalize">${u.status === 'active' ? 'Ativo' : 'Inativo'}</span>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <button onclick='editUser(${JSON.stringify(u)})' class="text-slate-400 hover:text-blue-600 mr-3 transition"><i class="fas fa-pen"></i></button>
+                            ${!isSuperAdmin ? `<button onclick="deleteUser(${u.id})" class="text-slate-400 hover:text-red-600 transition"><i class="fas fa-trash"></i></button>` : ''} 
+                            </td>
+                    </tr>
+                `;
+            }).join('');
+
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-400">Erro ao carregar usuários.</td></tr>`;
+        }
+    }
+    
+    function updateModalSelects() {
+        const selRole = document.getElementById('inputRole');
+        const selCust = document.getElementById('inputCustomer');
+
+        // Preserva a primeira opção
+        selRole.innerHTML = '<option value="">-- Selecione --</option>';
+        selCust.innerHTML = '<option value="">Acesso Global (Todos)</option>';
+
+        rolesList.forEach(r => {
+            selRole.innerHTML += `<option value="${r.id}">${r.name}</option>`;
+        });
+
+        customersList.forEach(c => {
+            selCust.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+        });
     }
 
-    function editUser(u) {
-        document.getElementById('userId').value = u.id;
-        document.getElementById('userName').value = u.name;
-        document.getElementById('userEmail').value = u.email;
-        document.getElementById('userRole').value = u.role_id || '';
-        document.getElementById('userActive').checked = (u.active == 1);
-        document.getElementById('modalUser').classList.remove('hidden');
+    // ABRIR/FECHAR
+    function openModal() {
+        document.getElementById('formUser').reset();
+        document.getElementById('inputId').value = '';
+        document.getElementById('passHint').innerText = '(obrigatória)';
+        document.getElementById('modalTitle').innerText = 'Novo Usuário';
+        document.getElementById('userModal').classList.remove('hidden');
+    }
+    function closeModal() { document.getElementById('userModal').classList.add('hidden'); }
+
+    // EDITAR
+    window.editUser = (u) => {
+        document.getElementById('inputId').value = u.id;
+        document.getElementById('inputName').value = u.name;
+        document.getElementById('inputEmail').value = u.email;
+        document.getElementById('inputRole').value = u.role_id || '';
+        document.getElementById('inputCustomer').value = u.customer_id || '';
+        document.getElementById('inputStatus').checked = (u.status === 'active');
+        
+        document.getElementById('passHint').innerText = '(deixe em branco para manter)';
+        document.getElementById('modalTitle').innerText = 'Editar Usuário';
+        document.getElementById('userModal').classList.remove('hidden');
     }
 
+    // SALVAR
     document.getElementById('formUser').onsubmit = async (e) => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(e.target));
-        data.active = document.getElementById('userActive').checked ? 1 : 0;
         
-        const res = await apiFetch('/api/users/save', { method: 'POST', body: JSON.stringify(data) });
-        if(res.success) { document.getElementById('modalUser').classList.add('hidden'); loadData(); showToast('Usuário salvo!'); }
-        else showToast(res.error, 'error');
+        // Checkbox status fix
+        data.status = document.getElementById('inputStatus').checked ? 'active' : 'inactive';
+
+        try {
+            const res = await apiFetch('/sys/users/save', { method: 'POST', body: JSON.stringify(data) });
+            if(res.success) { showToast('Usuário salvo!'); closeModal(); loadUsers(); }
+            else { showToast(res.error || 'Erro', 'error'); }
+        } catch(err) { showToast('Erro de conexão', 'error'); }
     };
 
-    function deleteUser(id) {
-        if(confirm('Tem certeza que deseja remover este usuário?')) {
-            apiFetch('/api/users/delete', { method: 'POST', body: JSON.stringify({id}) })
-            .then(() => loadData());
-        }
+    // EXCLUIR
+    window.deleteUser = async (id) => {
+        if(!confirm('Tem certeza? Esta ação é irreversível.')) return;
+        const res = await apiFetch('/sys/users/delete', { method: 'POST', body: JSON.stringify({id}) });
+        if(res.success) { showToast('Usuário removido.'); loadUsers(); }
+        else { showToast(res.error, 'error'); }
     }
 
-    function openUserModal() {
-        document.getElementById('formUser').reset();
-        document.getElementById('userId').value = '';
-        document.getElementById('modalUser').classList.remove('hidden');
-    }
-
-    loadData();
+    loadUsers();
 </script>

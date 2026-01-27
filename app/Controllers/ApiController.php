@@ -2,43 +2,42 @@
 namespace App\Controllers;
 
 use App\Config\Database;
-use Exception;
 
 class ApiController {
+    
     protected $pdo;
     protected $tenant_id;
+    protected $user_id;
+    protected $user_role;
 
     public function __construct() {
-        // Garante sessão
-        if (session_status() === PHP_SESSION_NONE) session_start();
+        // 1. Conecta ao Banco
+        $this->pdo = Database::getConnection();
 
-        // 1. Verifica Login
-        if (!isset($_SESSION['user_id'])) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Sessão expirada']);
-            exit;
+        // 2. Carrega dados da sessão (se existir), mas NÃO BLOQUEIA NADA AQUI
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
         }
 
-        // 2. Conecta ao Banco
-        try {
-            $this->pdo = Database::getConnection();
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Database connection failed']);
-            exit;
-        }
-
-        // 3. Define Tenant ID
-        // Se for Superadmin na rota /admin, usa o tenant_id da sessão (do login)
-        // Se for usuário comum, usa o tenant_id da sessão também.
-        // A segurança está no fato de que o tenant_id vem do banco no AuthController.
-        $this->tenant_id = $_SESSION['tenant_id'];
+        $this->tenant_id = $_SESSION['tenant_id'] ?? null;
+        $this->user_id   = $_SESSION['user_id'] ?? null;
+        $this->user_role = $_SESSION['user_role'] ?? 'guest';
+        
+        // REMOVIDO: if (!isset($_SESSION['user_id'])) { ... }
+        // O AuthMiddleware já fez essa verificação antes de chamar o Controller.
     }
 
     protected function json($data, $status = 200) {
-        http_response_code($status);
         header('Content-Type: application/json');
+        http_response_code($status);
         echo json_encode($data);
         exit;
+    }
+
+    protected function getRestrictionSQL($alias = 'v') {
+        if ($this->user_role === 'superadmin' && !$this->tenant_id) {
+            return " "; 
+        }
+        return " AND {$alias}.tenant_id = " . intval($this->tenant_id) . " ";
     }
 }

@@ -3,85 +3,111 @@ namespace App\Controllers;
 
 use PDO;
 use Exception;
+use DateTime;
+use DateTimeZone;
 
 class JourneyController extends ApiController {
 
-    private $MAX_CONTINUOUS = 19800; // 5.5h em segundos
-    private $MAX_DAILY = 36000;      // 10h em segundos
-    private $MIN_REST = 1800;        // 30 min em segundos
-
     public function index() {
+        $viewName = 'jornada'; 
+        if (file_exists(__DIR__ . '/../../views/layout.php')) {
+            require __DIR__ . '/../../views/layout.php';
+        } else {
+            require __DIR__ . '/../../views/jornada.php';
+        }
+    }
+
+    public function filter() {
         try {
-            // Busca Jornadas do Dia
-            $sql = "
-                SELECT 
-                    j.driver_id, d.name as driver_name, d.rfid_tag,
-                    j.vehicle_id, v.name as vehicle_name, v.plate,
-                    j.start_time, j.end_time,
-                    EXTRACT(EPOCH FROM (COALESCE(j.end_time, NOW()) - j.start_time)) as duration,
-                    CASE WHEN j.end_time IS NULL THEN 1 ELSE 0 END as is_open
-                FROM saas_driver_journeys j
-                JOIN saas_drivers d ON j.driver_id = d.id
-                JOIN saas_vehicles v ON j.vehicle_id = v.id
-                WHERE j.tenant_id = ? 
-                AND (DATE(j.start_time) = CURRENT_DATE OR j.end_time IS NULL)
-                ORDER BY j.driver_id, j.start_time ASC
-            ";
+            if (!isset($_SESSION['tenant_id'])) throw new Exception("Sessão expirada.");
+            $tenantId = $_SESSION['tenant_id'];
+
+            // Filtros (Se vier vazio, o padrão agora será tratado no Frontend, aqui aceitamos o que vier)
+            $dateStart = $_GET['start'] ?? date('Y-m-d');
+            $dateEnd   = $_GET['end']   ?? date('Y-m-d');
+            $driverId  = $_GET['driver'] ?? null;
+
+            $sql = "SELECT j.*, 
+                           d.name as driver_name, d.document as driver_doc,
+                           v.plate, v.icon,
+                           EXTRACT(EPOCH FROM (COALESCE(j.end_time, NOW()) - j.start_time)) as duration_seconds
+                    FROM saas_driver_journeys j
+                    LEFT JOIN saas_drivers d ON j.driver_id = d.id
+                    LEFT JOIN saas_vehicles v ON j.vehicle_id = v.id
+                    WHERE j.tenant_id = ? 
+                    AND j.start_time::date BETWEEN ? AND ?";
+            
+            $params = [$tenantId, $dateStart, $dateEnd];
+
+            if (!empty($driverId)) {
+                $sql .= " AND j.driver_id = ?";
+                $params[] = $driverId;
+            }
+
+            $sql .= " ORDER BY j.start_time DESC";
 
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$this->tenant_id]);
-            $raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->execute($params);
+            $raw_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Processa Dados
-            $drivers = [];
-            foreach ($raw as $r) {
-                $did = $r['driver_id'];
-                if (!isset($drivers[$did])) {
-                    $drivers[$did] = [
-                        'name' => $r['driver_name'],
-                        'current_vehicle' => '---',
-                        'status' => 'descanso',
-                        'total_driving' => 0,
-                        'continuous_driving' => 0,
-                        'violations' => [],
-                        'last_end' => 0
-                    ];
+            $processed_data = [];
+            $totalSeconds = 0;
+            $violations = 0;
+
+            // Definição de Fusos
+            $tzUTC   = new DateTimeZone('UTC'); // Banco geralmente salva em UTC
+            $tzLocal = new DateTimeZone('America/Porto_Velho'); // Seu Fuso (RO)
+
+            foreach ($raw_data as $row) {
+                $seconds = (int) $row['duration_seconds'];
+                $totalSeconds += $seconds;
+
+                // Lei 13.103: > 5.5 horas (19800 segundos)
+                $isViolation = ($seconds > 19800);
+                if ($isViolation) $violations++;
+                $row['is_13103_violation'] = $isViolation;
+                
+                // Formatação de Duração
+                $h = floor($seconds / 3600);
+                $m = floor(($seconds % 3600) / 60);
+                $row['duration_formatted'] = sprintf("%02dh %02dm", $h, $m);
+
+                // --- CORREÇÃO DE FUSO HORÁRIO ---
+                // Start Time
+                if ($row['start_time']) {
+                    $dtStart = new DateTime($row['start_time'], $tzUTC); // Assume origem UTC
+                    $dtStart->setTimezone($tzLocal); // Converte para RO
+                    $row['start_time_iso'] = $dtStart->format('c'); // ISO para o JS processar fácil
+                    $row['start_time_display'] = $dtStart->format('H:i');
+                    $row['start_date_display'] = $dtStart->format('d/m/Y');
                 }
 
-                $duration = (float)$r['duration'];
-                $start = strtotime($r['start_time']);
-                $end = $r['end_time'] ? strtotime($r['end_time']) : time();
-
-                // Verifica Descanso (Zera contínuo se parou > 30min)
-                if ($drivers[$did]['last_end'] > 0) {
-                    if (($start - $drivers[$did]['last_end']) >= $this->MIN_REST) {
-                        $drivers[$did]['continuous_driving'] = 0;
-                    }
+                // End Time
+                if ($row['end_time']) {
+                    $dtEnd = new DateTime($row['end_time'], $tzUTC);
+                    $dtEnd->setTimezone($tzLocal);
+                    $row['end_time_iso'] = $dtEnd->format('c');
+                    $row['end_time_display'] = $dtEnd->format('H:i');
+                    $row['end_date_display'] = $dtEnd->format('d/m/Y');
+                } else {
+                    $row['end_time_display'] = '--:--';
+                    $row['end_date_display'] = '-';
                 }
 
-                $drivers[$did]['total_driving'] += $duration;
-                $drivers[$did]['continuous_driving'] += $duration;
-                $drivers[$did]['last_end'] = $end;
-
-                if ($r['is_open']) {
-                    $drivers[$did]['status'] = 'dirigindo';
-                    $drivers[$did]['current_vehicle'] = $r['plate'];
-                }
+                $processed_data[] = $row;
             }
 
-            // Valida Infrações
-            foreach ($drivers as &$d) {
-                if ($d['total_driving'] > $this->MAX_DAILY) $d['violations'][] = 'Máximo Diário Excedido';
-                if ($d['continuous_driving'] > $this->MAX_CONTINUOUS) $d['violations'][] = 'Máximo Contínuo Excedido';
-                
-                // Formata Tempos
-                $d['fmt_total'] = gmdate("H:i", $d['total_driving']);
-                $d['fmt_cont'] = gmdate("H:i", $d['continuous_driving']);
-                
-                $d['health'] = empty($d['violations']) ? 'ok' : 'critical';
-            }
+            $totalH = floor($totalSeconds / 3600);
+            $totalM = floor(($totalSeconds % 3600) / 60);
 
-            $this->json(['success' => true, 'data' => array_values($drivers)]);
+            $this->json([
+                'data' => $processed_data,
+                'summary' => [
+                    'total_hours' => sprintf("%02d:%02d", $totalH, $totalM),
+                    'total_trips' => count($processed_data),
+                    'violations'  => $violations
+                ]
+            ]);
 
         } catch (Exception $e) {
             $this->json(['error' => $e->getMessage()], 500);

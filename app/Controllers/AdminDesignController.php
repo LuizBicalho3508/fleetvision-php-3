@@ -8,30 +8,34 @@ class AdminDesignController extends ApiController {
 
     public function __construct() {
         parent::__construct();
-        // Apenas Superadmin
+        // Segurança: Apenas Superadmin
         if (($_SESSION['user_role'] ?? '') !== 'superadmin') {
             $this->json(['error' => 'Acesso Negado'], 403);
             exit;
         }
     }
 
-    // Busca configurações de um Tenant específico
     public function getSettings() {
         $tenantId = $_GET['id'] ?? null;
         if (!$tenantId) {
-            $this->json(['error' => 'ID do Tenant obrigatório'], 400);
+            $this->json(['error' => 'ID obrigatório'], 400);
             return;
         }
 
         try {
-            $stmt = $this->pdo->prepare("SELECT id, name, slug, logo_url, login_bg_url, login_opacity, login_btn_color, primary_color FROM saas_tenants WHERE id = ?");
+            // Buscando novos campos: login_title, login_subtitle
+            $stmt = $this->pdo->prepare("SELECT id, name, slug, logo_url, login_bg_url, login_opacity, login_btn_color, login_title, login_subtitle FROM saas_tenants WHERE id = ?");
             $stmt->execute([$tenantId]);
             $data = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($data) {
-                // Prepara URLs
-                if ($data['login_bg_url']) $data['login_bg_url'] = '/' . $data['login_bg_url'];
-                if ($data['logo_url']) $data['logo_url'] = '/' . $data['logo_url'];
+                // Ajusta caminhos relativos
+                if ($data['login_bg_url'] && strpos($data['login_bg_url'], 'http') === false) {
+                    $data['login_bg_url'] = '/' . ltrim($data['login_bg_url'], '/');
+                }
+                if ($data['logo_url'] && strpos($data['logo_url'], 'http') === false) {
+                    $data['logo_url'] = '/' . ltrim($data['logo_url'], '/');
+                }
                 $this->json(['success' => true, 'data' => $data]);
             } else {
                 $this->json(['error' => 'Empresa não encontrada'], 404);
@@ -41,10 +45,8 @@ class AdminDesignController extends ApiController {
         }
     }
 
-    // Salva as configurações
     public function save() {
         $tenantId = $_POST['tenant_id'] ?? null;
-        
         if (!$tenantId) {
             $this->json(['error' => 'ID inválido'], 400);
             return;
@@ -53,6 +55,8 @@ class AdminDesignController extends ApiController {
         try {
             $opacity = $_POST['login_opacity'] ?? 0.95;
             $btnColor = $_POST['login_btn_color'] ?? '#2563eb';
+            $title = $_POST['login_title'] ?? 'Bem-vindo';
+            $subtitle = $_POST['login_subtitle'] ?? 'Faça login para continuar';
             
             // Upload do Background
             $bgPath = null;
@@ -61,10 +65,11 @@ class AdminDesignController extends ApiController {
                 $allowed = ['jpg', 'jpeg', 'png', 'webp'];
                 
                 if (in_array($ext, $allowed)) {
-                    $fileName = 'bg_tenant_' . $tenantId . '_' . time() . '.' . $ext;
-                    $uploadDir = __DIR__ . '/../../public/uploads/tenants/';
-                    
+                    // Cria diretório se não existir
+                    $uploadDir = __DIR__ . '/../../uploads/tenants/';
                     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+                    
+                    $fileName = 'bg_tenant_' . $tenantId . '_' . time() . '.' . $ext;
                     
                     if (move_uploaded_file($_FILES['background']['tmp_name'], $uploadDir . $fileName)) {
                         $bgPath = 'uploads/tenants/' . $fileName;
@@ -72,32 +77,36 @@ class AdminDesignController extends ApiController {
                 }
             }
 
-            // Monta Query
-            $sql = "UPDATE saas_tenants SET login_opacity = ?, login_btn_color = ?";
-            $params = [$opacity, $btnColor];
+            // Montagem Dinâmica da Query
+            $fields = [
+                'login_opacity = ?', 
+                'login_btn_color = ?',
+                'login_title = ?',
+                'login_subtitle = ?'
+            ];
+            $params = [$opacity, $btnColor, $title, $subtitle];
 
             if ($bgPath) {
-                $sql .= ", login_bg_url = ?";
+                $fields[] = 'login_bg_url = ?';
                 $params[] = $bgPath;
             }
 
-            $sql .= " WHERE id = ?";
-            $params[] = $tenantId;
-
+            $params[] = $tenantId; // WHERE id = ?
+            
+            $sql = "UPDATE saas_tenants SET " . implode(', ', $fields) . " WHERE id = ?";
             $this->pdo->prepare($sql)->execute($params);
 
             $this->json(['success' => true, 'bg_url' => $bgPath ? '/'.$bgPath : null]);
 
         } catch (Exception $e) {
-            $this->json(['error' => $e->getMessage()], 500);
+            $this->json(['error' => 'Erro ao salvar: ' . $e->getMessage()], 500);
         }
     }
     
-    // Remove o fundo (volta ao padrão)
     public function resetBackground() {
         $input = json_decode(file_get_contents('php://input'), true);
         $id = $input['tenant_id'] ?? null;
-
+        
         if (!$id) return $this->json(['error' => 'ID inválido'], 400);
 
         try {

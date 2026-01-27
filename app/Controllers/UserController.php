@@ -7,109 +7,183 @@ use Exception;
 class UserController extends ApiController {
 
     public function index() {
-        try {
-            $sql = "SELECT u.id, u.name, u.email, u.role_id, u.customer_id, u.branch_id, u.active, u.tenant_id,
-                           r.name as role_name, b.name as branch_name, c.name as customer_name, t.name as tenant_name 
-                    FROM saas_users u 
-                    LEFT JOIN saas_roles r ON u.role_id = r.id 
-                    LEFT JOIN saas_branches b ON u.branch_id = b.id 
-                    LEFT JOIN saas_customers c ON u.customer_id = c.id
-                    LEFT JOIN saas_tenants t ON u.tenant_id = t.id";
+        $viewName = 'usuarios';
+        if (file_exists(__DIR__ . '/../../views/layout.php')) {
+            require __DIR__ . '/../../views/layout.php';
+        } else {
+            require __DIR__ . '/../../views/usuarios.php';
+        }
+    }
 
-            if ($this->user_role === 'superadmin') {
-                $sql .= " ORDER BY t.name ASC, u.name ASC";
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->execute();
-            } else {
-                $sql .= " WHERE u.tenant_id = ? ORDER BY u.name ASC";
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->execute([$this->tenant_id]);
+    // LISTAR USUÁRIOS (Corrigido erro 500)
+    // LISTAR USUÁRIOS (Com Visão Global para Superadmin)
+    public function list() {
+        try {
+            if (!isset($_SESSION['tenant_id'])) {
+                $this->json(['error' => 'Sessão expirada'], 401);
+                return;
             }
-            $this->json($stmt->fetchAll(PDO::FETCH_ASSOC));
+            
+            $tenantId = $_SESSION['tenant_id'];
+            // Verifica se é Superadmin
+            $isSuperAdmin = ($_SESSION['user_role'] ?? '') === 'superadmin';
+
+            // 1. Monta a Query Base
+            // Adicionamos t.name (Tenant Name) e t.slug
+            $sql = "SELECT u.id, u.name, u.email, u.status, u.role_id, u.customer_id, u.last_login, u.tenant_id,
+                           r.name as role_name,
+                           c.name as customer_name,
+                           t.name as tenant_name, t.slug as tenant_slug
+                    FROM saas_users u
+                    LEFT JOIN saas_roles r ON u.role_id = r.id
+                    LEFT JOIN saas_customers c ON u.customer_id = c.id
+                    LEFT JOIN saas_tenants t ON u.tenant_id = t.id"; // Join com Tenants
+
+            $params = [];
+
+            // 2. Aplica Filtro (SÓ SE NÃO FOR SUPERADMIN)
+            if (!$isSuperAdmin) {
+                $sql .= " WHERE u.tenant_id = ?";
+                $params[] = $tenantId;
+            }
+
+            // Ordenação: Se for superadmin, agrupa por empresa, depois por nome
+            if ($isSuperAdmin) {
+                $sql .= " ORDER BY t.name ASC, u.name ASC";
+            } else {
+                $sql .= " ORDER BY u.name ASC";
+            }
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // 3. Auxiliares (Roles e Customers)
+            // Se for superadmin, idealmente carregaria de todos, mas para evitar dropdown gigante,
+            // mantemos o carregamento do tenant atual ou vazio para edição.
+            // Para visualização, o passo 1 já resolve.
+            
+            $stmtRoles = $this->pdo->prepare("SELECT id, name FROM saas_roles WHERE tenant_id = ? ORDER BY name");
+            $stmtRoles->execute([$tenantId]);
+            $roles = $stmtRoles->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmtCust = $this->pdo->prepare("SELECT id, name FROM saas_customers WHERE tenant_id = ? ORDER BY name");
+            $stmtCust->execute([$tenantId]);
+            $customers = $stmtCust->fetchAll(PDO::FETCH_ASSOC);
+
+            $this->json([
+                'users' => $users,
+                'roles' => $roles,
+                'customers' => $customers,
+                'is_superadmin' => $isSuperAdmin // Flag para o Frontend saber
+            ]);
+
         } catch (Exception $e) {
+            error_log("Erro List Users: " . $e->getMessage()); 
             $this->json(['error' => $e->getMessage()], 500);
         }
     }
 
+    // SALVAR USUÁRIO (Corrigido erro 400)
     public function store() {
-        // Validação de permissão simplificada
-        if ($this->user_role !== 'admin' && $this->user_role !== 'superadmin') {
-            $this->json(['error' => 'Sem permissão'], 403);
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
-        $id = $input['id'] ?? null;
-        $name = trim($input['name'] ?? '');
-        $email = trim($input['email'] ?? '');
-        $pass = $input['password'] ?? '';
-        
-        $role = !empty($input['role_id']) ? $input['role_id'] : null;
-        $cust = !empty($input['customer_id']) ? $input['customer_id'] : null;
-        $branch = !empty($input['branch_id']) ? $input['branch_id'] : null;
-        $active = (isset($input['active']) && $input['active']) ? 1 : 0;
-        
-        $target_tenant_id = ($this->user_role === 'superadmin' && !empty($input['tenant_id'])) 
-                            ? $input['tenant_id'] 
-                            : $this->tenant_id;
-
-        if (empty($name) || empty($email)) $this->json(['error' => 'Nome e Email obrigatórios'], 400);
-
         try {
-            // Check duplicidade
-            $checkSql = "SELECT id FROM saas_users WHERE email = ? AND tenant_id = ?";
-            $checkParams = [$email, $target_tenant_id];
-            if ($id) { $checkSql .= " AND id != ?"; $checkParams[] = $id; }
+            $data = json_decode(file_get_contents('php://input'), true);
             
-            $stmtCheck = $this->pdo->prepare($checkSql);
-            $stmtCheck->execute($checkParams);
-            if ($stmtCheck->fetch()) $this->json(['error' => 'Email já em uso'], 400);
-
-            if ($id) {
-                // Update
-                $sql = "UPDATE saas_users SET name=?, email=?, role_id=?, customer_id=?, branch_id=?, active=?, tenant_id=? WHERE id=?";
-                $params = [$name, $email, $role, $cust, $branch, $active, $target_tenant_id, $id];
-                
-                if ($this->user_role !== 'superadmin') { 
-                    $sql .= " AND tenant_id=?"; 
-                    $params[] = $this->tenant_id; 
-                }
-                
-                if (!empty($pass)) { 
-                    // Injeta atualização de senha no meio da query
-                    $sql = str_replace('active=?,', 'active=?, password=?,', $sql); 
-                    // Insere o hash antes dos parametros finais (splice manual)
-                    $newParams = array_slice($params, 0, 6);
-                    $newParams[] = password_hash($pass, PASSWORD_DEFAULT);
-                    $newParams = array_merge($newParams, array_slice($params, 6));
-                    $params = $newParams;
-                }
-                
-                $this->pdo->prepare($sql)->execute($params);
-            } else {
-                // Insert
-                if(empty($pass)) $this->json(['error' => 'Senha obrigatória'], 400);
-                $stmt = $this->pdo->prepare("INSERT INTO saas_users (tenant_id, name, email, password, role_id, customer_id, branch_id, status, active) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)");
-                $stmt->execute([$target_tenant_id, $name, $email, password_hash($pass, PASSWORD_DEFAULT), $role, $cust, $branch, $active]);
+            if (!isset($_SESSION['tenant_id'])) {
+                $this->json(['error' => 'Sessão inválida'], 401); 
+                return;
             }
+            $tenantId = $_SESSION['tenant_id'];
+
+            // Validação mais flexível
+            if (empty($data['name']) || empty($data['email'])) {
+                $this->json(['error' => 'Nome e E-mail são obrigatórios.'], 400);
+                return;
+            }
+
+            // Tratamento de nulos
+            $roleId = !empty($data['role_id']) ? $data['role_id'] : null;
+            $customerId = !empty($data['customer_id']) ? $data['customer_id'] : null;
+            $status = $data['status'] ?? 'active';
+
+            // Verifica duplicidade de email
+            $sqlCheck = "SELECT id FROM saas_users WHERE email = ? AND tenant_id = ?";
+            $paramsCheck = [$data['email'], $tenantId];
+            
+            if (!empty($data['id'])) {
+                $sqlCheck .= " AND id != ?";
+                $paramsCheck[] = $data['id'];
+            }
+            
+            $stmtCheck = $this->pdo->prepare($sqlCheck);
+            $stmtCheck->execute($paramsCheck);
+            if ($stmtCheck->fetch()) {
+                $this->json(['error' => 'Este e-mail já está em uso.'], 400);
+                return;
+            }
+
+            // EDICÃO
+            if (!empty($data['id'])) {
+                $userId = $data['id'];
+                
+                $sql = "UPDATE saas_users SET name=?, email=?, role_id=?, customer_id=?, status=?";
+                $params = [$data['name'], $data['email'], $roleId, $customerId, $status];
+
+                if (!empty($data['password'])) {
+                    $sql .= ", password=?";
+                    $params[] = password_hash($data['password'], PASSWORD_DEFAULT);
+                }
+
+                $sql .= " WHERE id=? AND tenant_id=?";
+                $params[] = $userId;
+                $params[] = $tenantId;
+
+                $this->pdo->prepare($sql)->execute($params);
+
+            } else {
+                // CRIAÇÃO
+                if (empty($data['password'])) {
+                    $this->json(['error' => 'Senha é obrigatória para novos usuários.'], 400);
+                    return;
+                }
+
+                $sql = "INSERT INTO saas_users (tenant_id, name, email, password, role_id, customer_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $params = [
+                    $tenantId, 
+                    $data['name'], 
+                    $data['email'], 
+                    password_hash($data['password'], PASSWORD_DEFAULT),
+                    $roleId,
+                    $customerId,
+                    $status
+                ];
+                $this->pdo->prepare($sql)->execute($params);
+            }
+
             $this->json(['success' => true]);
+
         } catch (Exception $e) {
+            error_log("Erro Store User: " . $e->getMessage());
             $this->json(['error' => $e->getMessage()], 500);
         }
     }
 
     public function delete() {
-        $input = json_decode(file_get_contents('php://input'), true);
-        $id = $input['id'] ?? null;
-        
-        if (!$id || $id == $this->user_id) $this->json(['error' => 'Operação inválida'], 400);
-
         try {
-            if ($this->user_role === 'superadmin') {
-                $this->pdo->prepare("DELETE FROM saas_users WHERE id = ?")->execute([$id]);
-            } else {
-                $this->pdo->prepare("DELETE FROM saas_users WHERE id = ? AND tenant_id = ?")->execute([$id, $this->tenant_id]);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $userId = $data['id'];
+            $tenantId = $_SESSION['tenant_id'];
+
+            if ($userId == $_SESSION['user_id']) {
+                $this->json(['error' => 'Você não pode excluir seu próprio usuário.'], 403);
+                return;
             }
+
+            $stmt = $this->pdo->prepare("DELETE FROM saas_users WHERE id = ? AND tenant_id = ?");
+            $stmt->execute([$userId, $tenantId]);
+
             $this->json(['success' => true]);
+
         } catch (Exception $e) {
             $this->json(['error' => $e->getMessage()], 500);
         }

@@ -7,7 +7,7 @@ use PDO;
 class AuthMiddleware {
 
     public static function handle() {
-        // 1. Inicia Sessão se necessário
+        // 1. Inicia Sessão
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
@@ -18,100 +18,80 @@ class AuthMiddleware {
         $parts = explode('/', $path);
 
         // ====================================================================
-        // 2. EXCEÇÕES GLOBAIS (Rotas Públicas e Webhooks)
+        // 2. EXCEÇÕES GLOBAIS (Rotas Públicas e APIs do Sistema)
         // ====================================================================
         
-        // Permite Webhooks do Asaas/Gateway sem verificação de sessão ou tenant
-        if (strpos($path, 'api/webhook') === 0) {
-            return; 
-        }
-        // Dentro do método handle(), junto com as outras exceções:
-        if (strpos($path, 'api/cron') === 0) {
-            return; // Permite execução do Cron sem login
-        }
+        // Webhooks (Asaas, Cron) - Acesso Externo
+        if (strpos($path, 'api/webhook') === 0) return;
+        if (strpos($path, 'api/cron') === 0) return;
 
-        // Permite endpoints de Autenticação da API (Login, Recovery, Reset)
-        if (strpos($path, 'api/auth') === 0) {
+        // APIs Internas Críticas (Login e Debug)
+        if (strpos($path, 'sys/auth') === 0) return; 
+        if (strpos($path, 'sys/debug') === 0) return;
+
+        // Páginas Públicas do Frontend (Login, Assets)
+        $publicPages = ['login', 'recover', 'reset', 'landing', 'assets', 'uploads', 'favicon.ico'];
+        
+        // Verifica qual é a "ação" da URL (ex: /cliente/LOGIN)
+        // Se o primeiro segmento não for 'sys', o segundo segmento costuma ser a ação.
+        $segmentToCheck = (isset($parts[1]) && !in_array($parts[0], ['sys', 'api'])) ? $parts[1] : $parts[0];
+        
+        // SE FOR PÁGINA PÚBLICA:
+        // Carregamos o Tenant (para mostrar logo/cores) mas NÃO bloqueamos o acesso.
+        if (in_array($segmentToCheck, $publicPages) || empty($path)) {
+            // Tenta adivinhar o slug pela URL
+            $slugCandidate = (isset($parts[0]) && !in_array($parts[0], ['sys', 'login', 'landing'])) ? $parts[0] : 'admin';
+            self::loadTenantContext($slugCandidate);
             return;
         }
 
         // ====================================================================
-        // 3. IDENTIFICAÇÃO DO TENANT (Multicliente)
+        // 3. IDENTIFICAÇÃO E BLOQUEIO (Rotas Protegidas)
         // ====================================================================
         
-        $pdo = Database::getConnection();
-        
-        // O primeiro segmento da URL é o slug do tenant (ex: /empresa-x/dashboard)
-        // Se for uma chamada de API direta que não começa com 'api', assume admin ou trata depois
         $slug = $parts[0] ?? 'admin';
-
-        // Evita tentar buscar tenant se a rota for 'api' na raiz (ex: api/status)
-        if ($slug === 'api') {
-            // Se for API protegida, confia na Sessão já existente ou Token
-            // Para simplificar, vamos deixar passar e os Controllers da API validam sessão
+        
+        // Ignora rotas de API interna se a sessão já foi validada pelo Controller
+        if ($slug === 'sys' || $slug === 'api') {
+            if (!isset($_SESSION['user_id'])) {
+                header('Content-Type: application/json');
+                http_response_code(401);
+                echo json_encode(['error' => 'Sessão expirada.']);
+                exit;
+            }
             return; 
         }
 
-        // Busca informações do Tenant no banco
-        $stmt = $pdo->prepare("SELECT id, name, slug, login_bg_url, primary_color, secondary_color, logo_url FROM saas_tenants WHERE slug = ? LIMIT 1");
-        $stmt->execute([$slug]);
-        $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Carrega o Tenant na Sessão
+        $tenant = self::loadTenantContext($slug);
 
-        // Fallback: Se slug não existe, carrega o 'admin' ou o primeiro disponível
-        if (!$tenant) {
-            $stmt->execute(['admin']);
-            $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Se nem admin existir (banco vazio), cria array dummy para não quebrar
-            if (!$tenant) {
-                $tenant = ['id' => 1, 'name' => 'FleetVision', 'slug' => 'admin', 'primary_color' => '#3b82f6'];
-            }
+        // 4. VERIFICAÇÃO DE LOGIN
+        if (!isset($_SESSION['user_id'])) {
+            $redirectSlug = $tenant['slug'] ?? 'admin';
+            header("Location: /{$redirectSlug}/login");
+            exit;
         }
 
-        // Salva contexto do Tenant na sessão
-        $_SESSION['tenant_id'] = $tenant['id'];
-        $_SESSION['tenant_data'] = $tenant;
-        $_SESSION['tenant_slug'] = $tenant['slug'];
-
-        // ====================================================================
-        // 4. VERIFICAÇÃO DE AUTENTICAÇÃO (Login Wall)
-        // ====================================================================
-
-        // Páginas visuais que não exigem login
-        $publicPages = ['login', 'recover', 'reset', '404'];
-        $currentPage = $parts[1] ?? 'dashboard'; // O segundo segmento é a página (ex: /slug/PAGINA)
-
-        // Se a página atual NÃO é pública e o usuário NÃO está logado
-        if (!in_array($currentPage, $publicPages)) {
-            if (!isset($_SESSION['user_id'])) {
-                // Redireciona para o login do tenant atual
-                header("Location: /{$tenant['slug']}/login");
-                exit;
-            }
-
-            // ====================================================================
-            // 5. BLOQUEIO FINANCEIRO (SaaS)
-            // ====================================================================
+        // 5. BLOQUEIO FINANCEIRO (SaaS)
+        $userRole = $_SESSION['user_role'] ?? 'user';
+        
+        if ($userRole !== 'superadmin') {
+            $pdo = Database::getConnection();
+            // Verifica status financeiro do cliente dono do usuário
+            $sql = "SELECT c.financial_status, c.name 
+                    FROM saas_users u 
+                    JOIN saas_customers c ON u.customer_id = c.id 
+                    WHERE u.id = ? AND u.tenant_id = ? 
+                    LIMIT 1";
             
-            $userRole = $_SESSION['user_role'] ?? 'user';
-            $userId = $_SESSION['user_id'];
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$_SESSION['user_id'], $tenant['id']]);
+            $customerData = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            // Superadmin nunca é bloqueado
-            if ($userRole !== 'superadmin') {
-                // Verifica status financeiro do Cliente vinculado ao Usuário
-                // Nota: O bloqueio é no nível do Cliente (Customer), não do Usuário individual
-                $sql = "SELECT c.financial_status, c.name 
-                        FROM saas_users u 
-                        JOIN saas_customers c ON u.customer_id = c.id 
-                        WHERE u.id = ? AND u.tenant_id = ? 
-                        LIMIT 1";
-                
-                $stmtStatus = $pdo->prepare($sql);
-                $stmtStatus->execute([$userId, $tenant['id']]);
-                $customerData = $stmtStatus->fetch(PDO::FETCH_ASSOC);
-
-                if ($customerData && $customerData['financial_status'] === 'overdue') {
-                    // Mata a execução e mostra tela de bloqueio
+            // Bloqueia se estiver vencido ou bloqueado (exceto logout)
+            if ($customerData && 
+               ($customerData['financial_status'] === 'overdue' || $customerData['financial_status'] === 'blocked')) {
+                if ($segmentToCheck !== 'logout') {
                     self::renderBlockScreen($customerData['name']);
                 }
             }
@@ -119,10 +99,62 @@ class AuthMiddleware {
     }
 
     /**
-     * Renderiza uma tela de bloqueio simples e direta.
+     * Carrega dados do Tenant e Salva na Sessão
+     * (Inclui personalização visual completa)
+     */
+    private static function loadTenantContext($slugCandidate) {
+        // Cache de Sessão: Evita ir ao banco se já temos os dados desse slug
+        if (isset($_SESSION['tenant_slug']) && $_SESSION['tenant_slug'] === $slugCandidate && isset($_SESSION['tenant_data'])) {
+            return $_SESSION['tenant_data'];
+        }
+
+        $pdo = Database::getConnection();
+        
+        // Busca TODOS os campos de design
+        $sql = "SELECT id, name, slug, logo_url, primary_color, secondary_color, 
+                       login_bg_url, login_opacity, login_btn_color, login_title, login_subtitle 
+                FROM saas_tenants WHERE slug = ? LIMIT 1";
+                
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$slugCandidate]);
+        $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Fallback se não encontrar
+        if (!$tenant) {
+            $stmt->execute(['admin']); // Tenta admin
+            $tenant = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Fallback final Hardcoded
+            if (!$tenant) {
+                $tenant = [
+                    'id' => 1, 'name' => 'FleetVision', 'slug' => 'admin',
+                    'primary_color' => '#2563eb', 'login_title' => 'Bem-vindo'
+                ];
+            }
+        }
+
+        // CORREÇÃO DE CAMINHOS DE IMAGEM
+        if (!empty($tenant['logo_url']) && $tenant['logo_url'][0] !== '/') {
+            $tenant['logo_url'] = '/' . $tenant['logo_url'];
+        }
+        if (!empty($tenant['login_bg_url']) && $tenant['login_bg_url'][0] !== '/') {
+            $tenant['login_bg_url'] = '/' . $tenant['login_bg_url'];
+        }
+
+        // Salva na Sessão
+        $_SESSION['tenant_id'] = $tenant['id'];
+        $_SESSION['tenant_data'] = $tenant;
+        $_SESSION['tenant_slug'] = $tenant['slug'];
+
+        return $tenant;
+    }
+
+    /**
+     * Tela de Bloqueio Financeiro HTML
      */
     private static function renderBlockScreen($customerName) {
         http_response_code(403);
+        $slug = $_SESSION['tenant_slug'] ?? 'admin';
         ?>
         <!DOCTYPE html>
         <html lang="pt-br">
@@ -141,26 +173,16 @@ class AuthMiddleware {
                 <h1 class="text-2xl font-bold text-slate-800 mb-2">Acesso Suspenso</h1>
                 <p class="text-slate-500 mb-6">
                     Olá <strong><?php echo htmlspecialchars($customerName); ?></strong>,<br>
-                    Identificamos uma pendência financeira em sua conta. O acesso ao sistema foi temporariamente bloqueado.
+                    Identificamos uma pendência financeira ou bloqueio administrativo em sua conta.
                 </p>
-                
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-sm text-left">
-                    <p class="font-bold text-slate-700 mb-1"><i class="fas fa-question-circle mr-1"></i> Como resolver?</p>
-                    <ul class="list-disc list-inside text-slate-500 space-y-1 ml-1">
-                        <li>Acesse seu e-mail para ver os boletos pendentes.</li>
-                        <li>Caso já tenha pago, aguarde a compensação bancária.</li>
-                        <li>Entre em contato com o suporte financeiro.</li>
-                    </ul>
-                </div>
-
-                <a href="/<?php echo $_SESSION['tenant_slug'] ?? 'admin'; ?>/logout" class="block w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition">
-                    Voltar para Login
+                <a href="/<?php echo $slug; ?>/logout" class="block w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition">
+                    Sair e Entrar com outra conta
                 </a>
             </div>
         </body>
         </html>
         <?php
-        exit; // Impede carregamento do resto do sistema
+        exit;
     }
 }
 ?>

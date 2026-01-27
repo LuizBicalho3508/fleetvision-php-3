@@ -1,158 +1,173 @@
-<div class="p-6">
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+<?php
+// Verifica se é superadmin para mostrar o checkbox "Global"
+$isSuperAdmin = ($_SESSION['user_role'] ?? '') === 'superadmin';
+?>
+
+<div class="p-6 space-y-6">
+    <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-2xl font-bold text-gray-800">Biblioteca de Ícones 3D</h1>
-            <p class="text-sm text-gray-500">Personalize a visualização da sua frota no mapa.</p>
+            <h1 class="text-2xl font-bold text-slate-800">Biblioteca de Ícones</h1>
+            <p class="text-sm text-slate-500">Personalize os marcadores do mapa.</p>
         </div>
-        <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded shadow-md font-bold transition flex items-center gap-2">
-            <i class="fas fa-cloud-upload-alt"></i> Enviar Novo Ícone
+        
+        <button onclick="openUploadModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg transition flex items-center gap-2">
+            <i class="fas fa-cloud-upload-alt"></i> Upload Novo
         </button>
     </div>
 
-    <div id="iconsGrid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-6">
-        <div class="col-span-full py-10 text-center text-gray-400">
-            <i class="fas fa-spinner fa-spin text-2xl"></i> Carregando biblioteca...
+    <div>
+        <h3 class="text-xs font-bold text-slate-400 uppercase mb-4">Meus Ícones & Globais</h3>
+        <div id="iconsGrid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
+            <div class="col-span-full p-12 text-center text-slate-400">
+                <i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i><br>Carregando...
+            </div>
         </div>
     </div>
 </div>
 
-<div id="uploadModal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-    <div class="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-down">
+<div id="uploadModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
         
-        <div class="bg-gray-100 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <h3 class="font-bold text-gray-800 text-lg">Upload de Ícone</h3>
-            <button onclick="closeModal()" class="text-gray-400 hover:text-red-500 text-xl">&times;</button>
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-slate-800">Enviar Novo Ícone</h3>
+            <button onclick="closeModal()"><i class="fas fa-times text-slate-400 hover:text-slate-600"></i></button>
         </div>
-        
-        <form id="formIcon" class="p-6 space-y-4">
-            
-            <div>
-                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Nome do Ícone</label>
-                <input type="text" name="name" placeholder="Ex: Caminhão Tanque" class="w-full border border-gray-300 rounded p-2 focus:border-blue-500 outline-none" required>
-            </div>
 
-            <div>
-                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Arquivo de Imagem</label>
-                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition cursor-pointer relative">
-                    <input type="file" name="icon" id="fileInput" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/png, image/jpeg, image/webp" required onchange="previewImage(this)">
-                    <div id="previewArea">
-                        <i class="fas fa-image text-3xl text-gray-300 mb-2"></i>
-                        <p class="text-xs text-gray-500">Clique ou arraste aqui<br>(PNG com fundo transparente)</p>
-                    </div>
-                    <img id="imgPreview" class="hidden max-h-24 mx-auto mt-2">
+        <form id="formUpload" class="space-y-4">
+            
+            <div class="w-full h-32 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 transition relative">
+                <input type="file" name="file" id="fileInput" accept="image/png, image/jpeg, image/svg+xml" class="absolute inset-0 opacity-0 cursor-pointer" required onchange="previewImage(this)">
+                <img id="imgPreview" class="hidden h-16 w-16 object-contain mb-2">
+                <div id="placeholderPreview" class="text-center">
+                    <i class="fas fa-image text-slate-300 text-2xl mb-1"></i>
+                    <p class="text-xs text-slate-400">Clique para selecionar</p>
                 </div>
             </div>
 
-            <div class="pt-4 border-t border-gray-100 flex justify-end gap-3">
-                <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-50 font-medium transition">Cancelar</button>
-                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold shadow transition">Enviar</button>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nome do Ícone</label>
+                <input type="text" name="name" id="nameInput" placeholder="Ex: Caminhão Azul" required class="w-full border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 outline-none">
             </div>
+
+            <?php if ($isSuperAdmin): ?>
+            <div class="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                <input type="checkbox" name="is_global" id="checkGlobal" value="true" class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
+                <label for="checkGlobal" class="text-sm font-bold text-indigo-700 cursor-pointer">
+                    Disponível para todos (Global)
+                </label>
+            </div>
+            <?php endif; ?>
+
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow transition">
+                <i class="fas fa-save mr-2"></i> Salvar Ícone
+            </button>
         </form>
     </div>
 </div>
 
 <script>
-    // Preview da imagem antes do upload
+    async function loadIcons() {
+        const grid = document.getElementById('iconsGrid');
+        const res = await apiFetch('/sys/icons');
+
+        if (!res.data || res.data.length === 0) {
+            grid.innerHTML = `<div class="col-span-full text-center text-slate-400 py-10">Nenhum ícone encontrado.</div>`;
+            return;
+        }
+
+        grid.innerHTML = res.data.map(icon => {
+            // Badge para diferenciar Global de Próprio
+            const badge = icon.type === 'global' 
+                ? `<span class="absolute top-2 left-2 bg-indigo-100 text-indigo-600 text-[9px] font-bold px-1.5 py-0.5 rounded border border-indigo-200">GLOBAL</span>` 
+                : '';
+            
+            // Botão de deletar (Superadmin deleta tudo, Tenant deleta só o dele)
+            // Se for global e eu não sou superadmin, esconde o botão delete
+            const isSuperAdmin = <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
+            const canDelete = (icon.type === 'custom') || isSuperAdmin;
+
+            const deleteBtn = canDelete ? `
+                <button onclick="deleteIcon(${icon.id})" class="absolute top-2 right-2 bg-red-100 text-red-500 w-6 h-6 rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition hover:bg-red-200 shadow-sm">
+                    <i class="fas fa-trash"></i>
+                </button>` : '';
+
+            return `
+            <div class="group relative bg-white border border-slate-200 rounded-xl p-4 flex flex-col items-center justify-center hover:shadow-lg transition aspect-square">
+                ${badge}
+                <img src="${icon.url}" class="h-10 w-10 object-contain mb-3 drop-shadow-sm">
+                <div class="text-xs font-bold text-slate-600 truncate w-full text-center">${icon.name}</div>
+                ${deleteBtn}
+            </div>
+            `;
+        }).join('');
+    }
+
+    // Preview da Imagem no Modal
     function previewImage(input) {
-        const preview = document.getElementById('imgPreview');
-        const area = document.getElementById('previewArea');
-        
         if (input.files && input.files[0]) {
             const reader = new FileReader();
             reader.onload = function(e) {
-                preview.src = e.target.result;
-                preview.classList.remove('hidden');
-                area.classList.add('hidden');
+                document.getElementById('imgPreview').src = e.target.result;
+                document.getElementById('imgPreview').classList.remove('hidden');
+                document.getElementById('placeholderPreview').classList.add('hidden');
+                
+                // Sugere nome baseado no arquivo
+                if(document.getElementById('nameInput').value === '') {
+                    let name = input.files[0].name.split('.')[0];
+                    // Capitaliza primeira letra
+                    name = name.charAt(0).toUpperCase() + name.slice(1);
+                    document.getElementById('nameInput').value = name;
+                }
             }
             reader.readAsDataURL(input.files[0]);
         }
     }
 
-    async function loadIcons() {
-        const grid = document.getElementById('iconsGrid');
-        try {
-            const res = await apiFetch('/api/icons');
-            
-            if (!res.data || res.data.length === 0) {
-                grid.innerHTML = `
-                    <div class="col-span-full flex flex-col items-center justify-center py-16 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
-                        <i class="fas fa-images text-4xl mb-3"></i>
-                        <p>Nenhum ícone personalizado.</p>
-                        <button onclick="openModal()" class="mt-4 text-blue-500 hover:underline text-sm">Faça o primeiro upload</button>
-                    </div>`;
-                return;
-            }
-
-            grid.innerHTML = res.data.map(icon => `
-                <div class="group relative bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center hover:shadow-lg transition hover:border-blue-300">
-                    <div class="h-16 w-16 flex items-center justify-center mb-3 bg-gray-50 rounded-lg p-2">
-                        <img src="${icon.url}" alt="${icon.name}" class="max-h-full max-w-full object-contain filter drop-shadow-sm">
-                    </div>
-                    <p class="text-xs font-bold text-gray-700 text-center truncate w-full" title="${icon.name}">${icon.name}</p>
-                    
-                    <button onclick="deleteIcon(${icon.id})" class="absolute top-2 right-2 text-red-400 hover:text-red-600 bg-white rounded-full p-1 shadow-sm opacity-0 group-hover:opacity-100 transition" title="Excluir">
-                        <i class="fas fa-trash-alt text-xs"></i>
-                    </button>
-                </div>
-            `).join('');
-
-        } catch(e) {
-            grid.innerHTML = '<div class="col-span-full text-center text-red-400">Erro ao carregar ícones.</div>';
-        }
-    }
-
-    // Modal Logic
-    function openModal() {
-        document.getElementById('formIcon').reset();
-        document.getElementById('imgPreview').classList.add('hidden');
-        document.getElementById('previewArea').classList.remove('hidden');
-        document.getElementById('uploadModal').classList.remove('hidden');
-    }
-    function closeModal() { document.getElementById('uploadModal').classList.add('hidden'); }
-
-    // Upload
-    document.getElementById('formIcon').onsubmit = async (e) => {
+    // Submit Upload
+    document.getElementById('formUpload').onsubmit = async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button[type="submit"]');
-        const oldTxt = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
-        btn.disabled = true;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = 'Enviando...'; btn.disabled = true;
 
         const formData = new FormData(e.target);
 
         try {
-            const res = await fetch('/api/icons/save', { method: 'POST', body: formData });
+            const res = await fetch('/sys/icons/upload', {
+                method: 'POST',
+                body: formData
+            });
             const json = await res.json();
 
             if (json.success) {
+                showToast('Ícone salvo!');
                 closeModal();
                 loadIcons();
-                showToast('Ícone adicionado com sucesso!');
             } else {
-                showToast(json.error || 'Erro no upload', 'error');
+                showToast(json.error || 'Erro', 'error');
             }
         } catch (err) {
             showToast('Erro de conexão', 'error');
         } finally {
-            btn.innerHTML = oldTxt;
-            btn.disabled = false;
+            btn.innerHTML = originalHtml; btn.disabled = false;
         }
     };
 
-    // Delete
-    function deleteIcon(id) {
-        if(!confirm('Deseja remover este ícone? Veículos usando ele voltarão ao padrão.')) return;
-
-        apiFetch('/api/icons/delete', { method: 'POST', body: JSON.stringify({id}) })
-            .then(res => {
-                if(res.success) {
-                    loadIcons();
-                    showToast('Ícone removido.');
-                } else {
-                    showToast(res.error, 'error');
-                }
-            });
+    async function deleteIcon(id) {
+        if(!confirm('Excluir este ícone?')) return;
+        const res = await apiFetch('/sys/icons/delete', { method: 'POST', body: JSON.stringify({id}) });
+        if(res.success) { showToast('Removido'); loadIcons(); }
+        else { showToast(res.error || 'Erro', 'error'); }
     }
+
+    function openUploadModal() {
+        document.getElementById('formUpload').reset();
+        document.getElementById('imgPreview').classList.add('hidden');
+        document.getElementById('placeholderPreview').classList.remove('hidden');
+        document.getElementById('uploadModal').classList.remove('hidden');
+    }
+    function closeModal() { document.getElementById('uploadModal').classList.add('hidden'); }
 
     loadIcons();
 </script>

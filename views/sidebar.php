@@ -1,143 +1,164 @@
 <?php
-// views/sidebar.php
-global $slug, $tenant; // Garante acesso global
-$page = $pageName ?? 'dashboard';
-$sideSlug = $slug ?? 'admin';
-$role = $_SESSION['user_role'] ?? 'user';
+// views/components/sidebar.php
+
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+$tenant = $_SESSION['tenant_data'] ?? [];
+$slug   = $_SESSION['tenant_slug'] ?? 'admin';
+
+// Normaliza o papel do usuário para evitar erros de Case Sensitive (Admin vs admin)
+$userRole = strtolower($_SESSION['user_role'] ?? 'guest'); 
+
+// Cores e Logo
+$primaryColor   = $tenant['primary_color'] ?? '#2563eb';
+$logoUrl        = !empty($tenant['logo_url']) ? $tenant['logo_url'] : null;
+$tenantName     = $tenant['name'] ?? 'FleetVision';
+
+// Identifica Página Ativa
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$pathParts = explode('/', trim($uri, '/'));
+$currentPage = end($pathParts);
+if ($currentPage == $slug || empty($currentPage)) $currentPage = 'dashboard';
+
+// --- DEFINIÇÃO DOS MENUS ---
+$menuSections = [
+    'VISÃO GERAL' => [
+        ['label' => 'Dashboard',   'icon' => 'fa-chart-pie',      'url' => 'dashboard',  'perm' => 'dashboard_view'],
+        ['label' => 'Mapa Real',   'icon' => 'fa-map-marked-alt', 'url' => 'mapa',       'perm' => 'map_view'],
+    ],
+    'GESTÃO DE FROTA' => [
+        ['label' => 'Veículos',    'icon' => 'fa-truck',          'url' => 'veiculos',   'perm' => 'vehicles_view'],
+        ['label' => 'Motoristas',  'icon' => 'fa-id-card',        'url' => 'motoristas', 'perm' => 'drivers_view'],
+        ['label' => 'Estoque',     'icon' => 'fa-boxes',          'url' => 'estoque',    'perm' => 'stock_view'],
+        ['label' => 'Laboratório', 'icon' => 'fa-flask',          'url' => 'teste',      'perm' => 'all'],
+        ['label' => 'Jornada',     'icon' => 'fa-clock',          'url' => 'jornada',    'perm' => 'journey_view'],
+        ['label' => 'Ranking',     'icon' => 'fa-trophy',         'url' => 'ranking',    'perm' => 'ranking_view'],
+    ],
+    'MONITORAMENTO' => [
+        ['label' => 'Alertas',     'icon' => 'fa-bell',           'url' => 'alertas',    'perm' => 'alerts_view'],
+        ['label' => 'Cercas',      'icon' => 'fa-draw-polygon',   'url' => 'cercas',     'perm' => 'geofences_view'],
+        ['label' => 'Histórico',   'icon' => 'fa-history',        'url' => 'historico',  'perm' => 'history_view'],
+    ],
+    'ADMINISTRATIVO' => [
+        ['label' => 'Clientes',    'icon' => 'fa-user-tie',       'url' => 'clientes',   'perm' => 'customers_view'],
+        ['label' => 'Financeiro',  'icon' => 'fa-file-invoice-dollar', 'url' => 'financeiro', 'perm' => 'financial_view'],
+        ['label' => 'Usuários',    'icon' => 'fa-users-cog',      'url' => 'usuarios',   'perm' => 'users_view'],
+        ['label' => 'Perfis',      'icon' => 'fa-shield-alt',     'url' => 'perfis',     'perm' => 'users_view'], 
+        ['label' => 'Relatórios',  'icon' => 'fa-file-alt',       'url' => 'relatorios', 'perm' => 'reports_view'],
+    ],
+];
+
+// Seção exclusiva do SuperAdmin (Adicionada ao array principal se for superadmin)
+if ($userRole === 'superadmin') {
+    $menuSections['SUPER ADMIN'] = [
+        ['label' => 'Gestão Tenants', 'icon' => 'fa-building',    'url' => 'admin_usuarios_tenant', 'perm' => 'all'],
+        ['label' => 'Financeiro SaaS','icon' => 'fa-dollar-sign', 'url' => 'admin_financeiro',      'perm' => 'all'],
+        ['label' => 'Design Login',   'icon' => 'fa-paint-brush', 'url' => 'admin_gestao',          'perm' => 'all'],
+        ['label' => 'Status Servidor','icon' => 'fa-server',      'url' => 'admin_server',          'perm' => 'all'],
+    ];
+}
 ?>
 
-<aside id="main-sidebar" class="w-64 bg-slate-900 text-white flex flex-col shadow-2xl z-40 flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden" style="background-color: var(--secondary);">
+<style>
+    .nav-item-active {
+        background-color: <?= $primaryColor ?> !important;
+        color: white !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .nav-item:hover:not(.nav-item-active) {
+        color: <?= $primaryColor ?>;
+        background-color: #f8fafc;
+    }
+    aside::-webkit-scrollbar { width: 4px; }
+    aside::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+</style>
+
+<aside id="main-sidebar" class="bg-white w-64 h-screen border-r border-slate-200 flex flex-col fixed left-0 top-0 z-40 transition-transform duration-300 -translate-x-full md:translate-x-0 shadow-xl md:shadow-none">
     
-    <div class="h-16 flex items-center justify-center border-b border-white/10 px-4 flex-shrink-0">
-        <?php if(!empty($tenant['logo_url'])): ?>
-            <img src="<?php echo $tenant['logo_url']; ?>" class="max-h-10 object-contain transition-all duration-300">
+    <div class="h-16 flex items-center justify-center border-b border-slate-100 px-4 shrink-0 bg-white">
+        <?php if ($logoUrl): ?>
+            <img src="<?= $logoUrl ?>" alt="Logo" class="max-h-8 max-w-full object-contain">
         <?php else: ?>
-            <h1 class="text-lg font-bold uppercase tracking-widest truncate text-white">
-                FLEET<span class="text-blue-500">VISION</span>
-            </h1>
+            <span class="font-bold text-slate-800 text-lg truncate uppercase tracking-widest">
+                Fleet<span style="color: <?= $primaryColor ?>">Vision</span>
+            </span>
         <?php endif; ?>
     </div>
 
-    <nav class="flex-1 overflow-y-auto py-2 overflow-x-hidden custom-scroll">
-        
-        <a href="/<?php echo $sideSlug; ?>/dashboard" class="sidebar-link <?php echo $page=='dashboard'?'active':''; ?>">
-            <i class="fas fa-chart-pie w-5 mr-2 text-center"></i> <span>Dashboard</span>
-        </a>
+    <div class="flex-1 overflow-y-auto py-6 px-4 space-y-6">
+        <?php foreach ($menuSections as $sectionTitle => $items): 
+            
+            // --- PASSO 1: Verificar se a SEÇÃO deve ser exibida ---
+            $hasSectionAccess = false;
 
-        <?php if(hasPermission('map_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/mapa" class="sidebar-link <?php echo $page=='mapa'?'active':''; ?>">
-            <i class="fas fa-map w-5 mr-2 text-center"></i> <span>Mapa & Grid</span>
-        </a>
-        <?php endif; ?>
+            // REGRA MESTRE: Admin e Superadmin veem TUDO
+            if (in_array($userRole, ['superadmin', 'admin'])) {
+                $hasSectionAccess = true;
+            } else {
+                // Usuários comuns: verifica item a item
+                foreach ($items as $item) {
+                    if ($item['perm'] === 'all' || (function_exists('hasPermission') && hasPermission($item['perm']))) {
+                        $hasSectionAccess = true;
+                        break;
+                    }
+                }
+            }
 
-        <div class="sidebar-header">Operacional</div>
-        
-        <?php if(hasPermission('vehicles_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/frota" class="sidebar-link <?php echo $page=='frota'?'active':''; ?>">
-            <i class="fas fa-truck w-5 mr-2 text-center"></i> <span>Veículos</span>
-        </a>
-        <?php endif; ?>
+            // Se não tiver acesso a nada nesta seção, pula o título
+            if (!$hasSectionAccess) continue;
+        ?>
+            <div>
+                <h3 class="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 select-none">
+                    <?= $sectionTitle ?>
+                </h3>
+                <ul class="space-y-1">
+                    <?php foreach ($items as $item): 
+                        
+                        // --- PASSO 2: Verificar se o ITEM deve ser exibido ---
+                        $showItem = false;
 
-        <?php if(hasPermission('drivers_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/motoristas" class="sidebar-link <?php echo $page=='motoristas'?'active':''; ?>">
-            <i class="fas fa-id-card w-5 mr-2 text-center"></i> <span>Motoristas</span>
-        </a>
-        <?php endif; ?>
+                        // 1. Admin/Superadmin: Acesso Total (Bypass Permissões)
+                        if (in_array($userRole, ['superadmin', 'admin'])) {
+                            $showItem = true;
+                        }
+                        // 2. Item Público
+                        elseif ($item['perm'] === 'all') {
+                            $showItem = true;
+                        }
+                        // 3. Usuário com Permissão Específica
+                        elseif (function_exists('hasPermission') && hasPermission($item['perm'])) {
+                            $showItem = true;
+                        }
 
-        <?php if(hasPermission('geofences_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/cercas" class="sidebar-link <?php echo $page=='cercas'?'active':''; ?>">
-            <i class="fas fa-draw-polygon w-5 mr-2 text-center"></i> <span>Cercas Virtuais</span>
-        </a>
-        <?php endif; ?>
+                        if (!$showItem) continue;
 
-        <?php if(hasPermission('alerts_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/alertas" class="sidebar-link <?php echo $page=='alertas'?'active':''; ?>">
-            <i class="fas fa-bell w-5 mr-2 text-center"></i> <span>Alertas</span>
-        </a>
-        <?php endif; ?>
+                        $isActive = ($currentPage === $item['url']);
+                    ?>
+                        <li>
+                            <a href="/<?= $slug ?>/<?= $item['url'] ?>" 
+                               class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 <?= $isActive ? 'nav-item-active' : 'text-slate-500' ?>">
+                                <i class="fas <?= $item['icon'] ?> w-5 text-center"></i>
+                                <span><?= $item['label'] ?></span>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endforeach; ?>
+    </div>
 
-        <?php if(hasPermission('map_history')): ?>
-        <a href="/<?php echo $sideSlug; ?>/historico" class="sidebar-link <?php echo $page=='historico'?'active':''; ?>">
-            <i class="fas fa-history w-5 mr-2 text-center"></i> <span>Replay de Rota</span>
-        </a>
-        <?php endif; ?>
-        
-        <?php if(hasPermission('journal_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/jornada" class="sidebar-link <?php echo $page=='jornada'?'active':''; ?>">
-            <i class="fas fa-business-time w-5 mr-2 text-center"></i> <span>Jornada</span>
-        </a>
-        <?php endif; ?>
-
-        <div class="sidebar-header">Gestão</div>
-        
-        <?php if(hasPermission('customers_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/clientes" class="sidebar-link <?php echo $page=='clientes'?'active':''; ?>">
-            <i class="fas fa-users w-5 mr-2 text-center"></i> <span>Clientes</span>
-        </a>
-        <?php endif; ?>
-        
-        <?php if(hasPermission('financial_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/financeiro" class="sidebar-link <?php echo $page=='financeiro'?'active':''; ?>">
-            <i class="fas fa-file-invoice-dollar w-5 mr-2 text-center"></i> <span>Financeiro</span>
-        </a>
-        <?php endif; ?>
-
-        <?php if(hasPermission('reports_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/relatorios" class="sidebar-link <?php echo $page=='relatorios'?'active':''; ?>">
-            <i class="fas fa-file-alt w-5 mr-2 text-center"></i> <span>Relatórios</span>
-        </a>
-        <?php endif; ?>
-
-        <?php if(hasPermission('users_view') || hasPermission('roles_manage')): ?>
-        <div class="sidebar-header">Administração</div>
-        
-        <a href="/<?php echo $sideSlug; ?>/usuarios" class="sidebar-link <?php echo $page=='usuarios'?'active':''; ?>">
-            <i class="fas fa-users-cog w-5 mr-2 text-center"></i> <span>Usuários</span>
-        </a>
-
-        <a href="/<?php echo $sideSlug; ?>/perfis" class="sidebar-link <?php echo $page=='perfis'?'active':''; ?>">
-            <i class="fas fa-user-shield w-5 mr-2 text-center"></i> <span>Perfis de Acesso</span>
-        </a>
-        <?php endif; ?>
-        
-        <?php if(hasPermission('branches_manage')): ?>
-        <a href="/<?php echo $sideSlug; ?>/filiais" class="sidebar-link <?php echo $page=='filiais'?'active':''; ?>">
-            <i class="fas fa-code-branch w-5 mr-2 text-center"></i> <span>Filiais</span>
-        </a>
-        <?php endif; ?>
-
-        <div class="sidebar-header">Técnico</div>
-        
-        <?php if(hasPermission('stock_view')): ?>
-        <a href="/<?php echo $sideSlug; ?>/estoque" class="sidebar-link <?php echo $page=='estoque'?'active':''; ?>">
-            <i class="fas fa-boxes w-5 mr-2 text-center"></i> <span>Estoque</span>
-        </a>
-        <?php endif; ?>
-
-        <?php if(hasPermission('tech_config')): ?>
-        <a href="/<?php echo $sideSlug; ?>/icones" class="sidebar-link <?php echo $page=='icones'?'active':''; ?>">
-            <i class="fas fa-icons w-5 mr-2 text-center"></i> <span>Ícones 3D</span>
-        </a>
-        <?php endif; ?>
-
-        <?php if($role === 'superadmin'): ?>
-        <div class="sidebar-header text-yellow-500">Super Admin</div>
-        <a href="/<?php echo $sideSlug; ?>/admin_server" class="sidebar-link <?php echo $page=="admin_server"?"active":""; ?>">
-            <i class="fas fa-server w-5 mr-2 text-center"></i> <span>Saúde Servidor</span>
-        </a>
-        <a href="/<?php echo $sideSlug; ?>/admin_usuarios_tenant" class="sidebar-link <?php echo $page=='admin_usuarios_tenant'?'active':''; ?>">
-            <i class="fas fa-building w-5 mr-2 text-center"></i> <span>Empresas (Tenants)</span>
-        </a>
-        <a href="/<?php echo $sideSlug; ?>/admin_crm" class="sidebar-link <?php echo $page=='admin_crm'?'active':''; ?>">
-            <i class="fas fa-briefcase w-5 mr-2 text-center"></i> <span>CRM Master</span>
-        </a>
-        <a href="/<?php echo $sideSlug; ?>/admin_gestao" class="sidebar-link <?php echo $page=='admin_gestao'?'active':''; ?>">
-            <i class="fas fa-paint-brush w-5 mr-2 text-center"></i> <span>Personalização</span>
-        </a>
-        <a href="/<?php echo $sideSlug; ?>/api_docs" class="sidebar-link <?php echo $page=='api_docs'?'active':''; ?>">
-            <i class="fas fa-code w-5 mr-2 text-center"></i> <span>API Docs</span>
-        </a>
-        <?php endif; ?>
-
-    </nav>
+    <div class="p-4 border-t border-slate-100 bg-slate-50">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white shadow-sm" style="background-color: <?= $primaryColor ?>">
+                <?= substr($_SESSION['user_name'] ?? 'U', 0, 1) ?>
+            </div>
+            <div class="flex-1 overflow-hidden">
+                <p class="text-xs font-bold truncate text-slate-700"><?= $_SESSION['user_name'] ?? 'Usuário' ?></p>
+                <p class="text-[10px] text-slate-400 truncate capitalize"><?= $userRole ?></p>
+            </div>
+            <a href="/logout" class="text-slate-400 hover:text-red-500 transition px-2" title="Sair">
+                <i class="fas fa-sign-out-alt"></i>
+            </a>
+        </div>
+    </div>
 </aside>

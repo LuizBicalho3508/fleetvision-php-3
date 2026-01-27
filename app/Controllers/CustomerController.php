@@ -1,100 +1,181 @@
 <?php
 namespace App\Controllers;
 
-use PDO;
 use Exception;
+use PDO;
+use DateTime;
 
 class CustomerController extends ApiController {
 
-    // Lista clientes (GET api/customers)
+    // 1. LISTA CLIENTES (Com totais financeiros e veículos ativos)
     public function index() {
         try {
-            $stmt = $this->pdo->prepare("
-                SELECT id, name, document, email, phone, address, 
-                       asaas_customer_id, asaas_customer_name, financial_status,
-                       contract_value, due_day, contract_status
-                FROM saas_customers 
-                WHERE tenant_id = ? 
-                ORDER BY id DESC
-            ");
-            $stmt->execute([$this->tenant_id]);
-            $this->json(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
-        } catch (Exception $e) {
-            $this->json(['error' => $e->getMessage()], 500);
-        }
-    }
+            $tenantId = $_SESSION['tenant_id'];
 
-    // Salva ou Atualiza (POST api/customers/save)
-    public function store() {
-        if (!$this->isAdmin()) $this->json(['error' => 'Sem permissão'], 403);
+            // Subquery para contar veículos ativos
+            $sql = "SELECT c.*, 
+                           (SELECT COUNT(*) FROM saas_vehicles v WHERE v.customer_id = c.id AND v.status = 'active') as active_vehicles 
+                    FROM saas_customers c 
+                    WHERE c.tenant_id = ? 
+                    ORDER BY c.name ASC";
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([$tenantId]);
+            $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $input = json_decode(file_get_contents('php://input'), true);
-        $id = $input['id'] ?? null;
-        $name = $input['name'] ?? '';
-        
-        if (empty($name)) $this->json(['error' => 'Nome obrigatório'], 400);
-
-        try {
-            if ($id) {
-                $stmt = $this->pdo->prepare("UPDATE saas_customers SET name=?, document=?, phone=?, email=?, address=?, contract_value=?, due_day=? WHERE id=? AND tenant_id=?");
-                $stmt->execute([
-                    $name, $input['document']??'', $input['phone']??'', $input['email']??'', 
-                    $input['address']??'', $input['contract_value']??0, $input['due_day']??10, 
-                    $id, $this->tenant_id
-                ]);
-            } else {
-                $stmt = $this->pdo->prepare("INSERT INTO saas_customers (tenant_id, name, document, phone, email, address, contract_value, due_day, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
-                $stmt->execute([
-                    $this->tenant_id, $name, $input['document']??'', $input['phone']??'', 
-                    $input['email']??'', $input['address']??'', $input['contract_value']??0, 
-                    $input['due_day']??10
-                ]);
+            // Calcula Total Mensal Estimado
+            foreach ($customers as &$c) {
+                $c['estimated_total'] = (float)$c['unit_price'] * (int)$c['active_vehicles'];
             }
-            $this->json(['success' => true]);
+
+            $this->json(['data' => $customers]);
         } catch (Exception $e) {
             $this->json(['error' => $e->getMessage()], 500);
         }
     }
 
-    // Exclui (POST api/customers/delete)
+    // 2. SALVAR (Create/Update Unificado)
+    public function store() { $this->save(false); }
+    public function update() { $this->save(true); }
+
+    private function save($isUpdate) {
+        try {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $tenantId = $_SESSION['tenant_id'];
+
+            if (empty($data['name'])) {
+                $this->json(['error' => 'Nome é obrigatório.'], 400);
+                return;
+            }
+
+            if ($isUpdate) {
+                $sql = "UPDATE saas_customers SET 
+                        name = ?, document = ?, email = ?, phone = ?, address = ?, 
+                        unit_price = ?, invoice_due_day = ?, contract_due_date = ? 
+                        WHERE id = ? AND tenant_id = ?";
+                $params = [
+                    $data['name'], $data['document'], $data['email'], $data['phone'], $data['address'],
+                    $data['unit_price'] ?? 0, $data['invoice_due_day'] ?? 10, $data['contract_due_date'] ?? null,
+                    $data['id'], $tenantId
+                ];
+            } else {
+                $sql = "INSERT INTO saas_customers (
+                        tenant_id, name, document, email, phone, address, 
+                        unit_price, invoice_due_day, contract_due_date, status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')";
+                $params = [
+                    $tenantId, $data['name'], $data['document'], $data['email'], $data['phone'], $data['address'],
+                    $data['unit_price'] ?? 0, $data['invoice_due_day'] ?? 10, $data['contract_due_date'] ?? null
+                ];
+            }
+
+            $this->pdo->prepare($sql)->execute($params);
+            $this->json(['success' => true]);
+
+        } catch (Exception $e) {
+            $this->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    // 3. EXCLUIR
     public function delete() {
-        if (!$this->isAdmin()) $this->json(['error' => 'Sem permissão'], 403);
-        
-        $input = json_decode(file_get_contents('php://input'), true);
-        $id = $input['id'] ?? null;
-
-        if (!$id) $this->json(['error' => 'ID inválido'], 400);
-
         try {
-            $stmt = $this->pdo->prepare("DELETE FROM saas_customers WHERE id = ? AND tenant_id = ?");
-            $stmt->execute([$id, $this->tenant_id]);
-            $this->json(['success' => true]);
-        } catch (Exception $e) {
-            $this->json(['error' => 'Erro ao excluir. Verifique vínculos.'], 500);
-        }
-    }
+            $data = json_decode(file_get_contents('php://input'), true);
+            $id = $data['id'];
+            
+            // Impede exclusão se tiver veículos
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM saas_vehicles WHERE customer_id = ?");
+            $stmt->execute([$id]);
+            if ($stmt->fetchColumn() > 0) {
+                $this->json(['error' => 'Não é possível excluir: Cliente possui veículos vinculados.'], 400);
+                return;
+            }
 
-    // Vincula Asaas (POST api/customers/link_asaas)
-    public function linkAsaas() {
-        if (!$this->isAdmin()) $this->json(['error' => 'Sem permissão'], 403);
-
-        $input = json_decode(file_get_contents('php://input'), true);
-        $localId = $input['local_id'] ?? null;
-        $asaasId = $input['asaas_id'] ?? null;
-        $asaasName = $input['asaas_name'] ?? 'Cliente Asaas';
-
-        if (!$localId || !$asaasId) $this->json(['error' => 'Dados incompletos'], 400);
-
-        try {
-            $stmt = $this->pdo->prepare("UPDATE saas_customers SET asaas_customer_id = ?, asaas_customer_name = ?, financial_status = 'ok' WHERE id = ? AND tenant_id = ?");
-            $stmt->execute([$asaasId, $asaasName, $localId, $this->tenant_id]);
+            $this->pdo->prepare("DELETE FROM saas_customers WHERE id = ?")->execute([$id]);
             $this->json(['success' => true]);
         } catch (Exception $e) {
             $this->json(['error' => $e->getMessage()], 500);
         }
     }
 
-    private function isAdmin() {
-        return $this->user_role === 'admin' || $this->user_role === 'superadmin';
+    // 4. LISTAR VEÍCULOS DO CLIENTE (Modal)
+    public function getVehicles() {
+        try {
+            $id = $_GET['id'];
+            $tenantId = $_SESSION['tenant_id'];
+            
+            $sql = "SELECT v.*, s.imei 
+                    FROM saas_vehicles v 
+                    LEFT JOIN saas_stock s ON v.stock_id = s.id 
+                    WHERE v.customer_id = ? AND v.tenant_id = ?";
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([$id, $tenantId]);
+            $this->json(['data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        } catch (Exception $e) {
+            $this->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    // 5. CALCULAR FATURA PROPORCIONAL (Pro-Rata)
+    public function getInvoicePreview() {
+        try {
+            $customerId = $_GET['id'];
+            $tenantId = $_SESSION['tenant_id'];
+
+            // Dados do Cliente
+            $stmt = $this->pdo->prepare("SELECT unit_price FROM saas_customers WHERE id = ? AND tenant_id = ?");
+            $stmt->execute([$customerId, $tenantId]);
+            $unitPrice = (float) $stmt->fetchColumn();
+
+            // Veículos Ativos
+            $stmtV = $this->pdo->prepare("SELECT plate, active_since FROM saas_vehicles WHERE customer_id = ? AND status = 'active'");
+            $stmtV->execute([$customerId]);
+            $vehicles = $stmtV->fetchAll(PDO::FETCH_ASSOC);
+
+            $total = 0;
+            $items = [];
+            $daysInMonth = 30; // Base comercial
+            $pricePerDay = $unitPrice / $daysInMonth;
+            
+            $firstDayOfMonth = new DateTime(date('Y-m-01'));
+
+            foreach ($vehicles as $v) {
+                $activeSince = new DateTime($v['active_since']);
+                
+                // Se ativou ANTES deste mês -> Mensalidade Cheia
+                if ($activeSince < $firstDayOfMonth) {
+                    $amount = $unitPrice;
+                    $days = 30;
+                    $desc = "Mensalidade Integral";
+                } else {
+                    // Se ativou ESTE mês -> Proporcional
+                    $daysActive = $daysInMonth - $activeSince->format('d') + 1;
+                    if ($daysActive < 0) $daysActive = 0;
+                    
+                    $amount = $daysActive * $pricePerDay;
+                    $days = $daysActive;
+                    $desc = "Proporcional ({$daysActive} dias)";
+                }
+
+                $items[] = [
+                    'plate' => $v['plate'],
+                    'since' => $v['active_since'],
+                    'days' => $days,
+                    'amount' => number_format($amount, 2, '.', ''),
+                    'desc' => $desc
+                ];
+                $total += $amount;
+            }
+
+            $this->json([
+                'items' => $items,
+                'total' => number_format($total, 2, '.', ''),
+                'unit_price' => $unitPrice
+            ]);
+
+        } catch (Exception $e) {
+            $this->json(['error' => $e->getMessage()], 500);
+        }
     }
 }

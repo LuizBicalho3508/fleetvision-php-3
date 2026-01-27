@@ -56,6 +56,7 @@
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col">
         <div class="p-5 border-b border-slate-100 flex justify-between items-center">
             <h3 class="text-sm font-bold text-slate-700">Frota em Tempo Real</h3>
+            <a href="frota" class="text-xs text-blue-600 font-bold hover:underline">Ver todos</a>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
@@ -68,7 +69,7 @@
                     </tr>
                 </thead>
                 <tbody id="fleet-list" class="divide-y divide-slate-100">
-                    <tr><td colspan="4" class="p-6 text-center text-slate-400">Carregando dados...</td></tr>
+                    <tr><td colspan="4" class="p-6 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin mr-2"></i> Carregando dados...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -79,46 +80,72 @@
 <script>
     async function loadDashboard() {
         try {
-            // Reutiliza função apiFetch do layout.php
-            const kpis = await apiFetch('/api/dashboard/kpis');
-            if(kpis) {
-                document.getElementById('kpi-total').innerText = kpis.total_vehicles;
-                document.getElementById('kpi-online').innerText = kpis.online;
-                document.getElementById('kpi-moving').innerText = kpis.moving;
-                
-                const total = parseInt(kpis.total_vehicles) || 1;
+            // CORREÇÃO: Usando rotas /sys/ definidas no index.php
+            const kpis = await apiFetch('/sys/dashboard/kpis');
+            
+            if (kpis && !kpis.error) {
+                // Atualiza KPIs
+                const total = parseInt(kpis.total_vehicles) || 0;
                 const online = parseInt(kpis.online) || 0;
-                const pct = Math.round((online/total)*100);
+                const moving = parseInt(kpis.moving) || 0;
+
+                // Animação simples dos números (pode ser melhorada)
+                document.getElementById('kpi-total').innerText = total;
+                document.getElementById('kpi-online').innerText = online;
+                document.getElementById('kpi-moving').innerText = moving;
+                
+                // Barra de progresso
+                const pct = total > 0 ? Math.round((online / total) * 100) : 0;
                 document.getElementById('bar-online').style.width = `${pct}%`;
             }
 
-            const fleet = await apiFetch('/api/dashboard/data');
+            // Carrega Lista da Frota
+            const fleet = await apiFetch('/sys/dashboard/data'); // Rota corrigida
             const tbody = document.getElementById('fleet-list');
-            if(fleet && fleet.length > 0) {
-                tbody.innerHTML = fleet.map(v => `
+            
+            if (fleet && Array.isArray(fleet) && fleet.length > 0) {
+                // Limita a 5 itens no dashboard para não poluir
+                const previewFleet = fleet.slice(0, 5);
+                
+                tbody.innerHTML = previewFleet.map(v => `
                     <tr class="hover:bg-slate-50 transition">
                         <td class="px-6 py-4 font-medium text-slate-700">
-                            ${v.plate} <span class="text-xs text-slate-400 block font-normal">${v.name}</span>
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-slate-500">
+                                    <i class="fas fa-car"></i>
+                                </div>
+                                <div>
+                                    ${v.plate || 'S/ Placa'} 
+                                    <span class="text-xs text-slate-400 block font-normal">${v.name || 'Sem Nome'}</span>
+                                </div>
+                            </div>
                         </td>
                         <td class="px-6 py-4">
-                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${v.speed > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}">
-                                <span class="w-1.5 h-1.5 rounded-full ${v.speed > 0 ? 'bg-green-500' : 'bg-slate-400'}"></span>
-                                ${v.speed > 0 ? 'Em Movimento' : 'Parado'}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${v.speed > 0 ? 'bg-green-100 text-green-700' : (v.online ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600')}">
+                                <span class="w-1.5 h-1.5 rounded-full ${v.speed > 0 ? 'bg-green-500' : (v.online ? 'bg-blue-500' : 'bg-slate-400')}"></span>
+                                ${v.speed > 0 ? 'Em Movimento' : (v.online ? 'Parado (Online)' : 'Offline')}
                             </span>
                         </td>
                         <td class="px-6 py-4 text-slate-600 font-mono">${Math.round(v.speed || 0)} km/h</td>
                         <td class="px-6 py-4 text-right text-xs text-slate-500 font-mono">
-                            ${v.lastupdate ? new Date(v.lastupdate).toLocaleTimeString() : '-'}
+                            ${v.lastupdate ? new Date(v.lastupdate).toLocaleString('pt-BR') : '-'}
                         </td>
                     </tr>
                 `).join('');
-                document.getElementById('last-update').innerText = 'Atualizado: ' + new Date().toLocaleTimeString();
+                document.getElementById('last-update').innerText = 'Atualizado: ' + new Date().toLocaleTimeString('pt-BR');
             } else {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400">Nenhum veículo ativo.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400">Nenhum veículo reportando dados no momento.</td></tr>';
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error("Erro Dashboard:", e);
+            document.getElementById('fleet-list').innerHTML = `<tr><td colspan="4" class="p-4 text-center text-red-400">Erro ao carregar dados. <br><small>${e.message}</small></td></tr>`;
+        }
     }
 
+    // Inicia e agenda atualização
     loadDashboard();
-    setInterval(loadDashboard, 10000);
+    
+    // Armazena intervalo para limpar se trocar de página (se for SPA)
+    if (window.dashboardInterval) clearInterval(window.dashboardInterval);
+    window.dashboardInterval = setInterval(loadDashboard, 15000); // 15 segundos
 </script>
