@@ -7,6 +7,7 @@ use Exception;
 class UserController extends ApiController {
 
     public function index() {
+        // Carrega a view HTML
         $viewName = 'usuarios';
         if (file_exists(__DIR__ . '/../../views/layout.php')) {
             require __DIR__ . '/../../views/layout.php';
@@ -15,41 +16,53 @@ class UserController extends ApiController {
         }
     }
 
-    // LISTAR USUÁRIOS (Corrigido erro 500)
-    // LISTAR USUÁRIOS (Com Visão Global para Superadmin)
+    // LISTAR USUÁRIOS
     public function list() {
+        // Limpa buffer para evitar lixo no JSON
+        if (ob_get_level()) ob_clean();
+
         try {
+            if (session_status() === PHP_SESSION_NONE) session_start();
+
             if (!isset($_SESSION['tenant_id'])) {
                 $this->json(['error' => 'Sessão expirada'], 401);
                 return;
             }
-            
-            $tenantId = $_SESSION['tenant_id'];
-            // Verifica se é Superadmin
-            $isSuperAdmin = ($_SESSION['user_role'] ?? '') === 'superadmin';
 
-            // 1. Monta a Query Base
-            // Adicionamos t.name (Tenant Name) e t.slug
-            $sql = "SELECT u.id, u.name, u.email, u.status, u.role_id, u.customer_id, u.last_login, u.tenant_id,
-                           r.name as role_name,
-                           c.name as customer_name,
-                           t.name as tenant_name, t.slug as tenant_slug
+            $tenantId = $_SESSION['tenant_id'];
+            $userRole = strtolower($_SESSION['user_role'] ?? 'guest');
+            $isSuperAdmin = ($userRole === 'superadmin');
+
+            // 1. QUERY SEGURA
+            // Removi last_login temporariamente para teste.
+            // Usamos COALESCE para garantir que não venha NULL nos nomes.
+            $sql = "SELECT 
+                        u.id, 
+                        COALESCE(u.name, 'Sem Nome') as name, 
+                        COALESCE(u.email, 'sem@email.com') as email, 
+                        u.status, 
+                        u.role_id, 
+                        u.customer_id, 
+                        u.tenant_id,
+                        COALESCE(r.name, '') as role_name,
+                        COALESCE(c.name, '') as customer_name,
+                        COALESCE(t.name, 'Empresa Desconhecida') as tenant_name
                     FROM saas_users u
                     LEFT JOIN saas_roles r ON u.role_id = r.id
                     LEFT JOIN saas_customers c ON u.customer_id = c.id
-                    LEFT JOIN saas_tenants t ON u.tenant_id = t.id"; // Join com Tenants
+                    LEFT JOIN saas_tenants t ON u.tenant_id = t.id"; 
 
             $params = [];
 
-            // 2. Aplica Filtro (SÓ SE NÃO FOR SUPERADMIN)
+            // 2. FILTRO
             if (!$isSuperAdmin) {
                 $sql .= " WHERE u.tenant_id = ?";
                 $params[] = $tenantId;
             }
 
-            // Ordenação: Se for superadmin, agrupa por empresa, depois por nome
+            // 3. ORDENAÇÃO
             if ($isSuperAdmin) {
-                $sql .= " ORDER BY t.name ASC, u.name ASC";
+                $sql .= " ORDER BY u.tenant_id ASC, u.name ASC";
             } else {
                 $sql .= " ORDER BY u.name ASC";
             }
@@ -58,11 +71,12 @@ class UserController extends ApiController {
             $stmt->execute($params);
             $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // 3. Auxiliares (Roles e Customers)
-            // Se for superadmin, idealmente carregaria de todos, mas para evitar dropdown gigante,
-            // mantemos o carregamento do tenant atual ou vazio para edição.
-            // Para visualização, o passo 1 já resolve.
-            
+            // 4. DADOS AUXILIARES (Dropdowns)
+            $roles = [];
+            $customers = [];
+
+            // Carrega dropdowns apenas para o tenant atual (evita vazamento de dados de outras empresas para o superadmin na tela de edição)
+            // Se for superadmin querendo editar, ele precisaria selecionar o tenant primeiro, mas para listagem isso basta.
             $stmtRoles = $this->pdo->prepare("SELECT id, name FROM saas_roles WHERE tenant_id = ? ORDER BY name");
             $stmtRoles->execute([$tenantId]);
             $roles = $stmtRoles->fetchAll(PDO::FETCH_ASSOC);
@@ -71,42 +85,46 @@ class UserController extends ApiController {
             $stmtCust->execute([$tenantId]);
             $customers = $stmtCust->fetchAll(PDO::FETCH_ASSOC);
 
+            // Retorno JSON
             $this->json([
                 'users' => $users,
                 'roles' => $roles,
                 'customers' => $customers,
-                'is_superadmin' => $isSuperAdmin // Flag para o Frontend saber
+                'is_superadmin' => $isSuperAdmin
             ]);
 
         } catch (Exception $e) {
-            error_log("Erro List Users: " . $e->getMessage()); 
-            $this->json(['error' => $e->getMessage()], 500);
+            // Em caso de erro, retorna JSON válido com o erro
+            http_response_code(500);
+            echo json_encode([
+                'error' => 'Erro interno ao listar usuários.',
+                'debug_message' => $e->getMessage()
+            ]);
+            exit;
         }
     }
 
-    // SALVAR USUÁRIO (Corrigido erro 400)
+    // SALVAR USUÁRIO
     public function store() {
+        if (ob_get_level()) ob_clean();
+
         try {
             $data = json_decode(file_get_contents('php://input'), true);
             
-            if (!isset($_SESSION['tenant_id'])) {
-                $this->json(['error' => 'Sessão inválida'], 401); 
-                return;
-            }
+            if (session_status() === PHP_SESSION_NONE) session_start();
             $tenantId = $_SESSION['tenant_id'];
 
-            // Validação mais flexível
             if (empty($data['name']) || empty($data['email'])) {
-                $this->json(['error' => 'Nome e E-mail são obrigatórios.'], 400);
+                $this->json(['error' => 'Dados incompletos.'], 400);
                 return;
             }
 
-            // Tratamento de nulos
+            // Normaliza Inputs
             $roleId = !empty($data['role_id']) ? $data['role_id'] : null;
             $customerId = !empty($data['customer_id']) ? $data['customer_id'] : null;
             $status = $data['status'] ?? 'active';
 
-            // Verifica duplicidade de email
+            // Verifica E-mail Duplicado
             $sqlCheck = "SELECT id FROM saas_users WHERE email = ? AND tenant_id = ?";
             $paramsCheck = [$data['email'], $tenantId];
             
@@ -118,14 +136,12 @@ class UserController extends ApiController {
             $stmtCheck = $this->pdo->prepare($sqlCheck);
             $stmtCheck->execute($paramsCheck);
             if ($stmtCheck->fetch()) {
-                $this->json(['error' => 'Este e-mail já está em uso.'], 400);
+                $this->json(['error' => 'E-mail já cadastrado.'], 400);
                 return;
             }
 
-            // EDICÃO
+            // EDIÇÃO
             if (!empty($data['id'])) {
-                $userId = $data['id'];
-                
                 $sql = "UPDATE saas_users SET name=?, email=?, role_id=?, customer_id=?, status=?";
                 $params = [$data['name'], $data['email'], $roleId, $customerId, $status];
 
@@ -135,15 +151,15 @@ class UserController extends ApiController {
                 }
 
                 $sql .= " WHERE id=? AND tenant_id=?";
-                $params[] = $userId;
+                $params[] = $data['id'];
                 $params[] = $tenantId;
 
                 $this->pdo->prepare($sql)->execute($params);
-
-            } else {
-                // CRIAÇÃO
+            } 
+            // CRIAÇÃO
+            else {
                 if (empty($data['password'])) {
-                    $this->json(['error' => 'Senha é obrigatória para novos usuários.'], 400);
+                    $this->json(['error' => 'Senha obrigatória.'], 400);
                     return;
                 }
 
@@ -163,27 +179,28 @@ class UserController extends ApiController {
             $this->json(['success' => true]);
 
         } catch (Exception $e) {
-            error_log("Erro Store User: " . $e->getMessage());
-            $this->json(['error' => $e->getMessage()], 500);
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+            exit;
         }
     }
 
+    // EXCLUIR
     public function delete() {
         try {
             $data = json_decode(file_get_contents('php://input'), true);
-            $userId = $data['id'];
+            
+            if (session_status() === PHP_SESSION_NONE) session_start();
             $tenantId = $_SESSION['tenant_id'];
 
-            if ($userId == $_SESSION['user_id']) {
-                $this->json(['error' => 'Você não pode excluir seu próprio usuário.'], 403);
+            if ($data['id'] == $_SESSION['user_id']) {
+                $this->json(['error' => 'Não pode excluir a si mesmo.'], 403);
                 return;
             }
 
-            $stmt = $this->pdo->prepare("DELETE FROM saas_users WHERE id = ? AND tenant_id = ?");
-            $stmt->execute([$userId, $tenantId]);
+            $this->pdo->prepare("DELETE FROM saas_users WHERE id = ? AND tenant_id = ?")->execute([$data['id'], $tenantId]);
 
             $this->json(['success' => true]);
-
         } catch (Exception $e) {
             $this->json(['error' => $e->getMessage()], 500);
         }
