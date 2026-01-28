@@ -2,7 +2,8 @@
 // index.php - Roteador Principal (Completo e Atualizado)
 
 // 1. Configurações de Erro
-ini_set('display_errors', 1);
+ob_start(); // Garante que headers funcionem mesmo com output prévio
+ini_set('display_errors', 1); // Em produção, mude para 0
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
@@ -34,7 +35,14 @@ spl_autoload_register(function ($class) {
 
 // 3. Sessão
 if (session_status() === PHP_SESSION_NONE) {
-    session_set_cookie_params(['path' => '/', 'httponly' => true, 'samesite' => 'Lax', 'lifetime' => 86400]);
+    // Força cookies seguros e HTTPOnly para evitar roubo de sessão via JS
+    session_set_cookie_params([
+        'path' => '/', 
+        'httponly' => true, 
+        'samesite' => 'Lax', 
+        'lifetime' => 86400,
+        'secure' => false // Mude para TRUE se estiver usando HTTPS
+    ]);
     session_start();
 }
 

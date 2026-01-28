@@ -2,34 +2,72 @@
 // views/login.php
 if (session_status() === PHP_SESSION_NONE) session_start();
 
+// 1. Redirecionamento se já logado
 if (isset($_SESSION['user_id'])) {
     $slug = $_SESSION['tenant_slug'] ?? 'admin';
     header("Location: /$slug/dashboard");
     exit;
 }
 
-// *** CORREÇÃO AQUI: Fallback robusto para encontrar o slug ***
-$currentSlug = $tenantSlug ?? ($_SESSION['tenant_slug'] ?? 'admin'); 
+// 2. Detecção Robusta do Slug (URL > Sessão > Padrão)
+$currentSlug = $tenantSlug ?? ($_SESSION['tenant_slug'] ?? 'admin');
 
+// Tenta pegar o slug da URL se a variável não vier do roteador (Fallback)
+if (!isset($tenantSlug)) {
+    $uriParts = explode('/', trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/'));
+    if (isset($uriParts[0]) && !in_array($uriParts[0], ['login', 'sys', 'api', 'assets'])) {
+        $currentSlug = $uriParts[0];
+    }
+}
+
+// 3. Busca Dados do Tenant no Banco
 $tenantData = null;
 try {
-    $pdo = \App\Config\Database::getConnection();
-    // Busca dados visuais
-    $stmt = $pdo->prepare("SELECT name, logo_url, login_bg_url, login_opacity, login_btn_color, primary_color FROM saas_tenants WHERE slug = ? LIMIT 1");
-    $stmt->execute([$currentSlug]);
-    $tenantData = $stmt->fetch(PDO::FETCH_ASSOC);
-} catch (Exception $e) { }
+    // Usa o namespace correto da sua classe Database
+    if (class_exists('App\Config\Database')) {
+        $pdo = \App\Config\Database::getConnection();
+        $stmt = $pdo->prepare("SELECT name, logo_url, login_bg_url, login_opacity, login_btn_color, login_card_color, primary_color FROM saas_tenants WHERE slug = ? LIMIT 1");
+        $stmt->execute([$currentSlug]);
+        $tenantData = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) { 
+    // Silencia erro de banco para não expor dados, usa fallback visual
+}
 
-// Configuração Visual (Com Fallbacks para não quebrar)
+// --- FUNÇÃO DE CORREÇÃO DE CAMINHOS (O SEGREDO DA CORREÇÃO) ---
+function get_safe_url($dbUrl) {
+    if (empty($dbUrl)) return '';
+    
+    // Se já for link completo (https://...), retorna direto
+    if (filter_var($dbUrl, FILTER_VALIDATE_URL)) return $dbUrl;
+    
+    // Remove barras extras e espaços
+    $cleanPath = ltrim(trim($dbUrl), '/');
+    
+    // Detecta a pasta do projeto automaticamente (ex: /fleetvision)
+    $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
+    $baseUrl   = ($scriptDir === '/' || $scriptDir === '\\') ? '' : $scriptDir;
+    $baseUrl   = str_replace('\\', '/', $baseUrl); // Fix para Windows
+    
+    return $baseUrl . '/' . $cleanPath;
+}
+
+// 4. Configuração Visual (Com Correção de Caminho aplicada)
 $appName      = $tenantData['name'] ?? 'FleetVision';
-$logoUrl      = !empty($tenantData['logo_url']) ? '/' . ltrim($tenantData['logo_url'], '/') : ''; 
-$bgUrl        = !empty($tenantData['login_bg_url']) ? '/' . ltrim($tenantData['login_bg_url'], '/') : 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&q=80';
+$logoUrl      = get_safe_url($tenantData['logo_url'] ?? '');
+$bgUrl        = get_safe_url($tenantData['login_bg_url'] ?? '');
+// Se não tiver imagem de fundo configurada, usa uma padrão do Unsplash
+if (empty($bgUrl)) {
+    $bgUrl = 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&q=80';
+}
+
 $cardOpacity  = $tenantData['login_opacity'] ?? 0.95;
+$cardColor    = $tenantData['login_card_color'] ?? '#ffffff'; // Suporte a cor do cartão
 $btnColor     = $tenantData['login_btn_color'] ?? '#2563eb';
 $primaryColor = $tenantData['primary_color'] ?? '#2563eb';
 
-// CSS do Background
-$bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-position: center;";
+// CSS Dinâmico
+$bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-position: center; background-color: $primaryColor;";
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -46,10 +84,15 @@ $bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-
         .login-bg { <?php echo $bgStyle; ?> }
         
         .glass-card {
-            background-color: rgba(255, 255, 255, <?php echo $cardOpacity; ?>);
+            background-color: <?php echo $cardColor; ?>; /* Usa a cor configurada no banco */
+            opacity: <?php echo $cardOpacity; ?>;
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        /* Garante que o conteúdo dentro do card não fique transparente se o card tiver opacidade */
+        .glass-card-content {
+            opacity: 1 !important; 
         }
 
         .btn-custom {
@@ -68,15 +111,23 @@ $bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-
     <div class="absolute inset-0 bg-black/40 z-0"></div>
 
     <div class="glass-card w-full max-w-md rounded-2xl shadow-2xl overflow-hidden relative z-10">
-        <div class="p-8">
+        <div class="p-8 glass-card-content">
             <div class="text-center mb-6">
                 <?php if ($logoUrl): ?>
-                    <img src="<?php echo $logoUrl; ?>" alt="Logo" class="h-16 mx-auto mb-4 object-contain">
+                    <img src="<?php echo htmlspecialchars($logoUrl); ?>" 
+                         alt="Logo" 
+                         class="h-16 mx-auto mb-4 object-contain transition-transform hover:scale-105"
+                         onerror="this.style.display='none'; document.getElementById('text-logo').classList.remove('hidden');">
+                    
+                    <h1 id="text-logo" class="text-3xl font-bold text-slate-800 tracking-tight mb-2 hidden">
+                        <?php echo htmlspecialchars($appName); ?>
+                    </h1>
                 <?php else: ?>
                     <h1 class="text-3xl font-bold text-slate-800 tracking-tight mb-2">
-                        FLEET<span style="color: <?php echo $primaryColor; ?>">VISION</span>
+                        <?php echo htmlspecialchars($appName); ?>
                     </h1>
                 <?php endif; ?>
+                
                 <p class="text-slate-500 text-sm">Bem-vindo ao <?php echo htmlspecialchars($appName); ?></p>
             </div>
 
@@ -114,8 +165,8 @@ $bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-
             </div>
         </div>
         
-        <div class="bg-slate-50/90 px-8 py-3 border-t border-slate-100 text-center">
-            <p class="text-xs text-slate-400">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($appName); ?></p>
+        <div class="bg-slate-50/50 px-8 py-3 border-t border-slate-100 text-center relative z-20">
+            <p class="text-xs text-slate-500">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($appName); ?></p>
         </div>
     </div>
 
@@ -131,7 +182,7 @@ $bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-
             msgBox.classList.add('hidden');
 
             try {
-                // Fetch para a API correta
+                // Fetch para a API
                 const res = await fetch('/sys/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -140,12 +191,21 @@ $bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-
 
                 const text = await res.text();
                 let json;
-                try { json = JSON.parse(text); } catch(e) { throw new Error('Erro no servidor: ' + text.substring(0, 50)); }
+                try { 
+                    json = JSON.parse(text); 
+                } catch(e) { 
+                    console.error('Resposta inválida:', text);
+                    throw new Error('Erro no servidor. Verifique o console.'); 
+                }
 
                 if (json.success) {
                     btn.innerHTML = '<i class="fas fa-check"></i> Sucesso!';
-                    btn.classList.add('bg-green-500');
-                    window.location.href = json.redirect;
+                    btn.classList.remove('btn-custom');
+                    btn.classList.add('bg-green-500', 'text-white');
+                    
+                    setTimeout(() => {
+                        window.location.href = json.redirect;
+                    }, 500);
                 } else {
                     throw new Error(json.error || 'Erro desconhecido');
                 }

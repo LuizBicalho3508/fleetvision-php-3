@@ -20,9 +20,9 @@ class AdminTenantController extends ApiController {
             $stmt = $this->pdo->query("SELECT * FROM saas_tenants ORDER BY id DESC");
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Corrige caminhos
+            // Corrige caminhos da logo para exibição
             foreach ($data as &$tenant) {
-                if (!empty($tenant['logo_url']) && $tenant['logo_url'][0] !== '/') {
+                if (!empty($tenant['logo_url']) && $tenant['logo_url'][0] !== '/' && strpos($tenant['logo_url'], 'http') === false) {
                     $tenant['logo_url'] = '/' . $tenant['logo_url'];
                 }
             }
@@ -43,6 +43,12 @@ class AdminTenantController extends ApiController {
             $slug = $_POST['slug'] ?? '';
             $status = $_POST['status'] ?? 'active';
 
+            // Novas Cores de Personalização
+            $primary_color    = $_POST['primary_color'] ?? '#2563eb';
+            $secondary_color  = $_POST['secondary_color'] ?? '#1e293b';
+            $sidebar_color    = $_POST['sidebar_color'] ?? '#ffffff';
+            $login_card_color = $_POST['login_card_color'] ?? '#ffffff';
+
             if (empty($name) || empty($slug)) {
                 echo json_encode(['error' => 'Nome e Slug são obrigatórios']);
                 exit;
@@ -58,7 +64,7 @@ class AdminTenantController extends ApiController {
                     // [FIX] Caminho absoluto seguro
                     $uploadDir = __DIR__ . '/../../uploads/';
                     
-                    // Cria pasta se não existir (Silencia erros com @)
+                    // Cria pasta se não existir
                     if (!is_dir($uploadDir)) {
                         if (!@mkdir($uploadDir, 0777, true)) {
                             throw new Exception("Falha ao criar pasta 'uploads'. Verifique permissões.");
@@ -69,11 +75,10 @@ class AdminTenantController extends ApiController {
                     $filename = 'logo_' . ($id ? $id : 'new_' . time()) . '_' . time() . '.' . $ext;
                     $destination = $uploadDir . $filename;
                     
-                    // Move arquivo (Silencia erros com @ e checa retorno)
+                    // Move arquivo
                     if (@move_uploaded_file($_FILES['logo']['tmp_name'], $destination)) {
-                        $logoPath = 'uploads/' . $filename;
+                        $logoPath = 'uploads/' . $filename; // Caminho relativo para salvar no banco
                     } else {
-                        // Captura o erro do PHP se possível ou lança genérico
                         $error = error_get_last();
                         throw new Exception("Falha no upload: " . ($error['message'] ?? 'Permissão negada ou pasta inválida.'));
                     }
@@ -85,8 +90,11 @@ class AdminTenantController extends ApiController {
             // Banco de Dados
             if ($id) {
                 // UPDATE
-                $sql = "UPDATE saas_tenants SET name = ?, slug = ?, status = ?";
-                $params = [$name, $slug, $status];
+                $sql = "UPDATE saas_tenants SET 
+                            name = ?, slug = ?, status = ?, 
+                            primary_color = ?, secondary_color = ?, 
+                            sidebar_color = ?, login_card_color = ?";
+                $params = [$name, $slug, $status, $primary_color, $secondary_color, $sidebar_color, $login_card_color];
 
                 if ($logoPath) {
                     $sql .= ", logo_url = ?";
@@ -99,8 +107,9 @@ class AdminTenantController extends ApiController {
                 $this->pdo->prepare($sql)->execute($params);
             } else {
                 // INSERT
-                $sql = "INSERT INTO saas_tenants (name, slug, status, logo_url) VALUES (?, ?, ?, ?)";
-                $this->pdo->prepare($sql)->execute([$name, $slug, $status, $logoPath]);
+                $sql = "INSERT INTO saas_tenants (name, slug, status, primary_color, secondary_color, sidebar_color, login_card_color, logo_url) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                $this->pdo->prepare($sql)->execute([$name, $slug, $status, $primary_color, $secondary_color, $sidebar_color, $login_card_color, $logoPath]);
             }
 
             echo json_encode(['success' => true]);
@@ -113,7 +122,6 @@ class AdminTenantController extends ApiController {
     }
     
     public function delete() {
-        // [FIX] Mesma proteção para o delete
         ini_set('display_errors', 0); 
         header('Content-Type: application/json');
         
@@ -135,3 +143,4 @@ class AdminTenantController extends ApiController {
         exit;
     }
 }
+?>
