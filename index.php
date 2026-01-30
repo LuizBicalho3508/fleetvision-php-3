@@ -130,6 +130,38 @@ $router->add('POST', 'sys/auth/login',   'AuthController', 'login');
 $router->add('POST', 'sys/auth/recover', 'AuthController', 'forgotPassword');
 $router->add('POST', 'sys/auth/reset',   'AuthController', 'resetPassword');
 
+// --- SGBras Monitoramento ---
+// Rota da Página (View)
+$router->add('GET', 'sgbras_monitor', 'SGBrasController', 'index');
+$router->add('POST', 'sys/sgbras/config',   'SGBrasController', 'saveConfig');
+$router->add('POST', 'sys/sgbras/snapshot', 'SGBrasController', 'snapshot');
+// Rota da API (Busca AJAX)
+$router->add('POST', 'sys/sgbras/stream', 'SGBrasController', 'stream');
+$router->add('POST', 'sys/sgbras/location', 'SGBrasController', 'location');
+// ... outras rotas ...
+// Adicione junto com as outras rotas SGBras
+$router->add('POST', 'sys/alerts/poll', 'SGBrasController', 'poll');
+$router->add('GET', 'sys/alerts/poll', 'SGBrasController', 'poll'); // Adicione GET também por garantia
+$router->add('POST', 'sys/sgbras/stream', 'SGBrasController', 'stream');
+// ADICIONE ESTA LINHA ABAIXO:
+$router->add('GET', 'sys/sgbras/proxy', 'SGBrasController', 'proxy');
+$router->add('POST', 'sys/sgbras/search', 'SGBrasController', 'search');
+// Rota do Proxy de Vídeo
+$router->add('GET', 'sys/sgbras/proxy', 'SGBrasController', 'proxy');
+// ROTA PARA CORRIGIR O ERRO DE POLLING DO SISTEMA
+$router->add('GET', 'sys/alerts/poll', 'SGBrasController', 'poll');
+$router->add('POST', 'sys/alerts/poll', 'SGBrasController', 'poll');
+// ... outras rotas ...
+// Adicione junto com as outras rotas do SGBras
+$router->add('GET', 'sys/alerts/poll', 'SGBrasController', 'poll');
+$router->add('POST', 'sys/alerts/poll', 'SGBrasController', 'poll');
+$router->add('POST', 'sys/sgbras/stream', 'SGBrasController', 'stream');
+$router->add('GET', 'sys/sgbras/proxy', 'SGBrasController', 'proxy');
+
+// ADICIONE ESTAS DUAS PARA CALAR O ERRO DE POLLING:
+$router->add('GET', 'sys/alerts/poll', 'SGBrasController', 'poll');
+$router->add('POST', 'sys/alerts/poll', 'SGBrasController', 'poll');
+
 // --- Dashboard & Monitoramento ---
 $router->add('GET', 'sys/dashboard/kpis',   'DashboardController', 'getKpis');
 $router->add('GET', 'sys/dashboard/data',   'DashboardController', 'getData');
