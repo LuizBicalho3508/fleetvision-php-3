@@ -1,222 +1,160 @@
 <?php
-// views/login.php
 if (session_status() === PHP_SESSION_NONE) session_start();
+use App\Config\Database;
+use PDO;
 
-// 1. Redirecionamento se já logado
-if (isset($_SESSION['user_id'])) {
-    $slug = $_SESSION['tenant_slug'] ?? 'admin';
-    header("Location: /$slug/dashboard");
-    exit;
-}
+// 1. Busca Tenant
+$uriPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$pathParts = explode('/', trim($uriPath, '/'));
+$tenantSlug = $pathParts[0] ?? 'admin';
 
-// 2. Detecção Robusta do Slug (URL > Sessão > Padrão)
-$currentSlug = $tenantSlug ?? ($_SESSION['tenant_slug'] ?? 'admin');
+$tenantData = $_SESSION['tenant_data'] ?? [];
 
-// Tenta pegar o slug da URL se a variável não vier do roteador (Fallback)
-if (!isset($tenantSlug)) {
-    $uriParts = explode('/', trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/'));
-    if (isset($uriParts[0]) && !in_array($uriParts[0], ['login', 'sys', 'api', 'assets'])) {
-        $currentSlug = $uriParts[0];
-    }
-}
-
-// 3. Busca Dados do Tenant no Banco
-$tenantData = null;
 try {
-    // Usa o namespace correto da sua classe Database
-    if (class_exists('App\Config\Database')) {
-        $pdo = \App\Config\Database::getConnection();
-        $stmt = $pdo->prepare("SELECT name, logo_url, login_bg_url, login_opacity, login_btn_color, login_card_color, primary_color FROM saas_tenants WHERE slug = ? LIMIT 1");
-        $stmt->execute([$currentSlug]);
-        $tenantData = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (empty($tenantData) || ($tenantData['slug'] ?? '') !== $tenantSlug) {
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare("SELECT * FROM saas_tenants WHERE slug = ? LIMIT 1");
+        $stmt->execute([$tenantSlug]);
+        $fresh = $stmt->fetch(PDO::FETCH_ASSOC);
+        $tenantData = $fresh ? $fresh : [];
     }
-} catch (Exception $e) { 
-    // Silencia erro de banco para não expor dados, usa fallback visual
+} catch (Exception $e) {}
+
+// 2. Variáveis de Design (Com Fallbacks)
+$primaryColor     = $tenantData['primary_color'] ?? '#2563eb';
+$secondaryColor   = $tenantData['secondary_color'] ?? '#1e293b';
+
+$loginBgColor     = $tenantData['login_bg_color'] ?? '#f3f4f6';
+$loginBgUrl       = $tenantData['login_bg_url'] ?? '';
+
+$loginCardColor   = $tenantData['login_card_color'] ?? '#ffffff';
+$loginTextColor   = $tenantData['login_text_color'] ?? '#334155';
+$loginInputBg     = $tenantData['login_input_bg_color'] ?? '#ffffff';
+$loginBtnText     = $tenantData['login_btn_text_color'] ?? '#ffffff';
+
+// Ajuste Logo
+$logoUrl = $tenantData['logo_url'] ?? '';
+if (!empty($logoUrl) && $logoUrl[0] !== '/' && strpos($logoUrl, 'http') === false) $logoUrl = '/' . $logoUrl;
+if (!empty($loginBgUrl) && $loginBgUrl[0] !== '/' && strpos($loginBgUrl, 'http') === false) $loginBgUrl = '/' . $loginBgUrl;
+
+// Background Style
+$bgStyle = "background-color: $loginBgColor;";
+if (!empty($loginBgUrl)) {
+    $bgStyle = "background-image: url('$loginBgUrl'); background-size: cover; background-position: center;";
+} else {
+    $bgStyle = "background: linear-gradient(135deg, $primaryColor 0%, $secondaryColor 100%);";
 }
-
-// --- FUNÇÃO DE CORREÇÃO DE CAMINHOS (O SEGREDO DA CORREÇÃO) ---
-function get_safe_url($dbUrl) {
-    if (empty($dbUrl)) return '';
-    
-    // Se já for link completo (https://...), retorna direto
-    if (filter_var($dbUrl, FILTER_VALIDATE_URL)) return $dbUrl;
-    
-    // Remove barras extras e espaços
-    $cleanPath = ltrim(trim($dbUrl), '/');
-    
-    // Detecta a pasta do projeto automaticamente (ex: /fleetvision)
-    $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
-    $baseUrl   = ($scriptDir === '/' || $scriptDir === '\\') ? '' : $scriptDir;
-    $baseUrl   = str_replace('\\', '/', $baseUrl); // Fix para Windows
-    
-    return $baseUrl . '/' . $cleanPath;
-}
-
-// 4. Configuração Visual (Com Correção de Caminho aplicada)
-$appName      = $tenantData['name'] ?? 'FleetVision';
-$logoUrl      = get_safe_url($tenantData['logo_url'] ?? '');
-$bgUrl        = get_safe_url($tenantData['login_bg_url'] ?? '');
-// Se não tiver imagem de fundo configurada, usa uma padrão do Unsplash
-if (empty($bgUrl)) {
-    $bgUrl = 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&q=80';
-}
-
-$cardOpacity  = $tenantData['login_opacity'] ?? 0.95;
-$cardColor    = $tenantData['login_card_color'] ?? '#ffffff'; // Suporte a cor do cartão
-$btnColor     = $tenantData['login_btn_color'] ?? '#2563eb';
-$primaryColor = $tenantData['primary_color'] ?? '#2563eb';
-
-// CSS Dinâmico
-$bgStyle = "background-image: url('$bgUrl'); background-size: cover; background-position: center; background-color: $primaryColor;";
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - <?php echo htmlspecialchars($appName); ?></title>
+    <title>Login | <?= $tenantData['name'] ?? 'Sistema' ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .login-bg { <?php echo $bgStyle; ?> }
-        
-        .glass-card {
-            background-color: <?php echo $cardColor; ?>; /* Usa a cor configurada no banco */
-            opacity: <?php echo $cardOpacity; ?>;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        /* Garante que o conteúdo dentro do card não fique transparente se o card tiver opacidade */
-        .glass-card-content {
-            opacity: 1 !important; 
-        }
-
-        .btn-custom {
-            background-color: <?php echo $btnColor; ?>;
-            color: white;
-            transition: all 0.3s ease;
-        }
-        .btn-custom:hover {
-            filter: brightness(90%);
-            transform: translateY(-1px);
-        }
+        body { <?= $bgStyle ?> min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .glass-effect { backdrop-filter: blur(10px); }
+        .input-field { background-color: <?= $loginInputBg ?>; color: #333; }
+        .input-field::placeholder { color: #999; }
     </style>
 </head>
-<body class="login-bg h-screen w-full flex items-center justify-center p-4">
+<body class="p-4">
 
-    <div class="absolute inset-0 bg-black/40 z-0"></div>
-
-    <div class="glass-card w-full max-w-md rounded-2xl shadow-2xl overflow-hidden relative z-10">
-        <div class="p-8 glass-card-content">
-            <div class="text-center mb-6">
-                <?php if ($logoUrl): ?>
-                    <img src="<?php echo htmlspecialchars($logoUrl); ?>" 
-                         alt="Logo" 
-                         class="h-16 mx-auto mb-4 object-contain transition-transform hover:scale-105"
-                         onerror="this.style.display='none'; document.getElementById('text-logo').classList.remove('hidden');">
-                    
-                    <h1 id="text-logo" class="text-3xl font-bold text-slate-800 tracking-tight mb-2 hidden">
-                        <?php echo htmlspecialchars($appName); ?>
-                    </h1>
+    <div class="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden transform transition-all hover:scale-[1.01] relative"
+         style="background-color: <?= $loginCardColor ?>">
+        
+        <div class="p-8 md:p-10 relative z-10">
+            <div class="text-center mb-8">
+                <?php if (!empty($logoUrl)): ?>
+                    <img src="<?= $logoUrl ?>" alt="Logo" class="h-16 mx-auto object-contain mb-4">
                 <?php else: ?>
-                    <h1 class="text-3xl font-bold text-slate-800 tracking-tight mb-2">
-                        <?php echo htmlspecialchars($appName); ?>
+                    <h1 class="text-3xl font-bold uppercase tracking-widest" style="color: <?= $loginTextColor ?>">
+                        Fleet<span style="color: <?= $primaryColor ?>">Vision</span>
                     </h1>
                 <?php endif; ?>
-                
-                <p class="text-slate-500 text-sm">Bem-vindo ao <?php echo htmlspecialchars($appName); ?></p>
+                <p class="text-sm font-medium opacity-70" style="color: <?= $loginTextColor ?>">
+                    Bem-vindo de volta
+                </p>
             </div>
 
-            <form id="loginForm" class="space-y-4">
-                <input type="hidden" name="slug" value="<?php echo htmlspecialchars($currentSlug); ?>">
-                
+            <form id="loginForm" class="space-y-6">
+                <input type="hidden" name="tenant_slug" value="<?= $tenantSlug ?>">
+
                 <div>
-                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1 ml-1">E-mail</label>
+                    <label class="block text-xs font-bold uppercase mb-2 opacity-80" style="color: <?= $loginTextColor ?>">Email</label>
                     <div class="relative">
-                        <i class="fas fa-envelope absolute left-4 top-3.5 text-slate-400"></i>
-                        <input type="email" name="email" class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-slate-700" placeholder="seu@email.com" required>
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-envelope text-gray-400"></i>
+                        </span>
+                        <input type="email" name="email" required 
+                               class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 outline-none transition-all input-field"
+                               placeholder="seu@email.com">
                     </div>
                 </div>
 
                 <div>
-                    <div class="flex justify-between items-center mb-1 ml-1">
-                        <label class="block text-xs font-bold text-slate-600 uppercase">Senha</label>
-                    </div>
+                    <label class="block text-xs font-bold uppercase mb-2 opacity-80" style="color: <?= $loginTextColor ?>">Senha</label>
                     <div class="relative">
-                        <i class="fas fa-lock absolute left-4 top-3.5 text-slate-400"></i>
-                        <input type="password" name="password" id="password" class="w-full pl-11 pr-12 py-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-slate-700" placeholder="••••••••" required>
-                        <button type="button" onclick="document.getElementById('password').type = document.getElementById('password').type === 'password' ? 'text' : 'password'" class="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">
-                            <i class="fas fa-eye"></i>
-                        </button>
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-lock text-gray-400"></i>
+                        </span>
+                        <input type="password" name="password" required 
+                               class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 outline-none transition-all input-field"
+                               placeholder="••••••••">
+                    </div>
+                    <div class="flex justify-end mt-2">
+                        <a href="#" class="text-xs hover:underline opacity-80" style="color: <?= $loginTextColor ?>">Esqueceu a senha?</a>
                     </div>
                 </div>
 
-                <button type="submit" id="btnSubmit" class="btn-custom w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 mt-4">
-                    <span>Entrar</span>
+                <button type="submit" 
+                        class="w-full py-3 rounded-lg font-bold shadow-lg transition-all transform hover:translate-y-[-1px] hover:shadow-xl"
+                        style="background-color: <?= $primaryColor ?>; color: <?= $loginBtnText ?>">
+                    ENTRAR
                 </button>
             </form>
-
-            <div id="msgError" class="hidden mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-red-600 text-sm text-center">
-                <i class="fas fa-exclamation-circle mr-1"></i> <span id="msgText">Erro</span>
-            </div>
         </div>
         
-        <div class="bg-slate-50/50 px-8 py-3 border-t border-slate-100 text-center relative z-20">
-            <p class="text-xs text-slate-500">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($appName); ?></p>
+        <div class="py-4 text-center bg-black/5 text-xs font-medium opacity-60" style="color: <?= $loginTextColor ?>">
+            &copy; <?= date('Y') ?> <?= $tenantData['name'] ?? 'Sistema' ?>
         </div>
     </div>
 
     <script>
-        document.getElementById('loginForm').onsubmit = async (e) => {
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('btnSubmit');
-            const original = btn.innerHTML;
-            const msgBox = document.getElementById('msgError');
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerText;
             
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validando...';
-            msgBox.classList.add('hidden');
+            btn.innerText = 'Autenticando...';
+            btn.style.opacity = '0.7';
 
             try {
-                // Fetch para a API
-                const res = await fetch('/sys/auth/login', {
+                const formData = new FormData(e.target);
+                const response = await fetch('/sys/auth/login', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(Object.fromEntries(new FormData(e.target)))
+                    body: formData
                 });
+                const data = await response.json();
 
-                const text = await res.text();
-                let json;
-                try { 
-                    json = JSON.parse(text); 
-                } catch(e) { 
-                    console.error('Resposta inválida:', text);
-                    throw new Error('Erro no servidor. Verifique o console.'); 
-                }
-
-                if (json.success) {
-                    btn.innerHTML = '<i class="fas fa-check"></i> Sucesso!';
-                    btn.classList.remove('btn-custom');
-                    btn.classList.add('bg-green-500', 'text-white');
-                    
-                    setTimeout(() => {
-                        window.location.href = json.redirect;
-                    }, 500);
+                if (data.success) {
+                    btn.innerText = 'Redirecionando...';
+                    btn.style.backgroundColor = '#10b981';
+                    setTimeout(() => window.location.href = data.redirect, 500);
                 } else {
-                    throw new Error(json.error || 'Erro desconhecido');
+                    throw new Error(data.error || 'Erro de login');
                 }
-            } catch (err) {
-                console.error(err);
-                document.getElementById('msgText').innerText = err.message;
-                msgBox.classList.remove('hidden');
+            } catch (error) {
+                alert(error.message);
                 btn.disabled = false;
-                btn.innerHTML = original;
+                btn.innerText = originalText;
+                btn.style.opacity = '1';
+                btn.style.backgroundColor = '<?= $primaryColor ?>';
             }
-        };
+        });
     </script>
 </body>
 </html>

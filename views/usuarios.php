@@ -1,234 +1,172 @@
-<div class="p-6 space-y-6 h-full flex flex-col">
-    
-    <div class="flex justify-between items-center shrink-0">
+<div class="p-6 space-y-6">
+    <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Gerenciamento de Usuários</h1>
-            <p class="text-sm text-slate-500">Controle quem acessa o sistema, seus perfis e permissões de frota.</p>
+            <h2 class="text-2xl font-bold text-slate-800">Usuários</h2>
+            <p class="text-sm text-slate-500">Gestão de acesso.</p>
         </div>
-        <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition flex items-center gap-2">
-            <i class="fas fa-user-plus"></i> Novo Usuário
+        <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+            <i class="fas fa-plus"></i> Novo Usuário
         </button>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
-        <div class="overflow-x-auto custom-scrollbar flex-1">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-slate-50 text-slate-500 font-bold uppercase text-xs sticky top-0 z-10 shadow-sm">
-                    <tr>
-                        <th class="px-6 py-4 w-10"></th>
-                        <th class="px-6 py-4">Nome / E-mail</th>
-                        <th class="px-6 py-4">Perfil de Acesso</th>
-                        <th class="px-6 py-4">Visibilidade (Cliente)</th>
-                        <th class="px-6 py-4">Status</th>
-                        <th class="px-6 py-4 text-right">Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="usersBody" class="divide-y divide-slate-50">
-                    <tr><td colspan="6" class="p-12 text-center text-slate-400">Carregando...</td></tr>
-                </tbody>
-            </table>
-        </div>
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <table class="w-full text-left text-sm text-slate-600">
+            <thead class="bg-slate-50 text-slate-700 font-semibold uppercase text-xs">
+                <tr>
+                    <th class="px-6 py-4">Nome / Email</th>
+                    <th class="px-6 py-4">Perfil</th>
+                    <th class="px-6 py-4">Cliente Vinculado</th>
+                    <th class="px-6 py-4">Status</th>
+                    <th class="px-6 py-4 text-right">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="usersTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
     </div>
 </div>
 
-<div id="userModal" class="fixed inset-0 z-[60] hidden">
-    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white w-full max-w-lg rounded-2xl shadow-2xl p-8 scale-100 transition-transform">
-        
-        <div class="flex justify-between items-center mb-6">
-            <h3 class="text-xl font-bold text-slate-800" id="modalTitle">Novo Usuário</h3>
-            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
-        </div>
+<div id="userModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <h3 class="text-lg font-bold text-slate-800 mb-4" id="modalTitle">Usuário</h3>
+        <form id="userForm" class="space-y-4">
+            <input type="hidden" name="id" id="userId">
+            <input type="hidden" name="tenant_id" id="userTenantId"> <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label>
+                <input type="text" name="name" id="userName" required class="w-full border border-slate-300 rounded-lg px-3 py-2 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
+                <input type="email" name="email" id="userEmail" required class="w-full border border-slate-300 rounded-lg px-3 py-2 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Senha</label>
+                <input type="password" name="password" id="userPass" class="w-full border border-slate-300 rounded-lg px-3 py-2 outline-none" placeholder="******">
+            </div>
 
-        <form id="formUser" class="space-y-5">
-            <input type="hidden" name="id" id="inputId">
-            
             <div class="grid grid-cols-2 gap-4">
-                <div class="col-span-2">
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label>
-                    <input type="text" name="name" id="inputName" required class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 transition">
-                </div>
-                
-                <div class="col-span-2">
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">E-mail de Acesso</label>
-                    <input type="email" name="email" id="inputEmail" required class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 transition">
-                </div>
-
-                <div class="col-span-2">
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Senha <span id="passHint" class="text-[10px] text-slate-400 font-normal lowercase">(deixe em branco para manter)</span></label>
-                    <input type="password" name="password" id="inputPassword" class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 transition" placeholder="******">
-                </div>
-            </div>
-
-            <div class="border-t border-slate-100 pt-4 grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Perfil (Função)</label>
-                    <select name="role_id" id="inputRole" class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 bg-white transition cursor-pointer">
-                        <option value="">-- Selecione --</option>
-                    </select>
-                    <p class="text-[10px] text-slate-400 mt-1">Define o que ele pode <b>fazer</b>.</p>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Perfil</label>
+                    <select name="role_id" id="userRole" class="w-full border border-slate-300 rounded-lg px-3 py-2 outline-none"></select>
                 </div>
-
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Vincular Cliente</label>
-                    <select name="customer_id" id="inputCustomer" class="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-blue-500 bg-white transition cursor-pointer">
-                        <option value="">Acesso Global (Todos)</option>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
+                    <select name="status" id="userStatus" class="w-full border border-slate-300 rounded-lg px-3 py-2 outline-none">
+                        <option value="active">Ativo</option>
+                        <option value="inactive">Inativo</option>
                     </select>
-                    <p class="text-[10px] text-slate-400 mt-1">Define o que ele pode <b>ver</b>.</p>
                 </div>
             </div>
 
-            <div class="flex items-center gap-3 pt-2">
-                <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" name="status" id="inputStatus" value="active" class="sr-only peer" checked>
-                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    <span class="ml-3 text-sm font-medium text-slate-600">Usuário Ativo</span>
-                </label>
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                <label class="block text-xs font-bold text-blue-700 uppercase mb-1">Vincular a Cliente (Opcional)</label>
+                <select name="customer_id" id="userCustomer" class="w-full border border-blue-200 rounded-lg px-3 py-2 outline-none bg-white">
+                    <option value="">-- Usuário Interno (Vê Tudo) --</option>
+                    </select>
+                <p class="text-[10px] text-blue-500 mt-1">Se selecionado, o usuário verá apenas veículos deste cliente.</p>
             </div>
 
-            <div class="pt-4 flex gap-3">
-                <button type="button" onclick="closeModal()" class="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl transition">Cancelar</button>
-                <button type="submit" class="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-200 transition">Salvar Usuário</button>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium">Salvar</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-    let rolesList = [];
-    let customersList = [];
-
-    async function loadUsers() {
-        const tbody = document.getElementById('usersBody');
-        
-        try {
-            const res = await apiFetch('/sys/users');
-            
-            rolesList = res.roles || [];
-            customersList = res.customers || [];
-            updateModalSelects();
-
-            // Flag vinda do backend
-            const isSuperAdmin = res.is_superadmin || false;
-
-            if(!res.users || res.users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="p-12 text-center text-slate-400">Nenhum usuário encontrado.</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = res.users.map(u => {
-                const initials = u.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                
-                const roleBadge = u.role_name 
-                    ? `<span class="bg-purple-50 text-purple-700 px-2 py-1 rounded-md text-xs font-bold border border-purple-100">${u.role_name}</span>`
-                    : `<span class="bg-slate-100 text-slate-500 px-2 py-1 rounded-md text-xs font-bold">Sem Perfil</span>`;
-
-                const customerBadge = u.customer_name
-                    ? `<span class="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-xs font-bold border border-blue-100"><i class="fas fa-building text-[10px]"></i> ${u.customer_name}</span>`
-                    : `<span class="flex items-center gap-1 text-slate-400 text-xs italic"><i class="fas fa-globe text-slate-300"></i> Acesso Global</span>`;
-
-                const statusColor = u.status === 'active' ? 'text-green-500' : 'text-red-400';
-
-                // --- NOVO: BADGE DE TENANT (EMPRESA) ---
-                // Só aparece se for Superadmin e o usuário pertencer a um tenant diferente do atual da sessão (opcional) ou sempre.
-                let tenantBadge = '';
-                if (isSuperAdmin && u.tenant_name) {
-                    tenantBadge = `<div class="mt-1"><span class="bg-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider">${u.tenant_name}</span></div>`;
-                }
-
-                return `
-                    <tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0 group">
-                        <td class="px-6 py-4">
-                            <div class="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-xs">
-                                ${initials}
-                            </div>
-                        </td>
-                        <td class="px-6 py-4">
-                            <div class="font-bold text-slate-700">${u.name}</div>
-                            <div class="text-xs text-slate-400">${u.email}</div>
-                            ${tenantBadge} </td>
-                        <td class="px-6 py-4">${roleBadge}</td>
-                        <td class="px-6 py-4">${customerBadge}</td>
-                        <td class="px-6 py-4">
-                            <i class="fas fa-circle ${statusColor} text-[8px]"></i>
-                            <span class="text-xs ml-1 text-slate-600 capitalize">${u.status === 'active' ? 'Ativo' : 'Inativo'}</span>
-                        </td>
-                        <td class="px-6 py-4 text-right">
-                            <button onclick='editUser(${JSON.stringify(u)})' class="text-slate-400 hover:text-blue-600 mr-3 transition"><i class="fas fa-pen"></i></button>
-                            ${!isSuperAdmin ? `<button onclick="deleteUser(${u.id})" class="text-slate-400 hover:text-red-600 transition"><i class="fas fa-trash"></i></button>` : ''} 
-                            </td>
-                    </tr>
-                `;
-            }).join('');
-
-        } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-400">Erro ao carregar usuários.</td></tr>`;
-        }
-    }
-    
-    function updateModalSelects() {
-        const selRole = document.getElementById('inputRole');
-        const selCust = document.getElementById('inputCustomer');
-
-        // Preserva a primeira opção
-        selRole.innerHTML = '<option value="">-- Selecione --</option>';
-        selCust.innerHTML = '<option value="">Acesso Global (Todos)</option>';
-
-        rolesList.forEach(r => {
-            selRole.innerHTML += `<option value="${r.id}">${r.name}</option>`;
-        });
-
-        customersList.forEach(c => {
-            selCust.innerHTML += `<option value="${c.id}">${c.name}</option>`;
-        });
-    }
-
-    // ABRIR/FECHAR
-    function openModal() {
-        document.getElementById('formUser').reset();
-        document.getElementById('inputId').value = '';
-        document.getElementById('passHint').innerText = '(obrigatória)';
-        document.getElementById('modalTitle').innerText = 'Novo Usuário';
-        document.getElementById('userModal').classList.remove('hidden');
-    }
-    function closeModal() { document.getElementById('userModal').classList.add('hidden'); }
-
-    // EDITAR
-    window.editUser = (u) => {
-        document.getElementById('inputId').value = u.id;
-        document.getElementById('inputName').value = u.name;
-        document.getElementById('inputEmail').value = u.email;
-        document.getElementById('inputRole').value = u.role_id || '';
-        document.getElementById('inputCustomer').value = u.customer_id || '';
-        document.getElementById('inputStatus').checked = (u.status === 'active');
-        
-        document.getElementById('passHint').innerText = '(deixe em branco para manter)';
-        document.getElementById('modalTitle').innerText = 'Editar Usuário';
-        document.getElementById('userModal').classList.remove('hidden');
-    }
-
-    // SALVAR
-    document.getElementById('formUser').onsubmit = async (e) => {
-        e.preventDefault();
-        const data = Object.fromEntries(new FormData(e.target));
-        
-        // Checkbox status fix
-        data.status = document.getElementById('inputStatus').checked ? 'active' : 'inactive';
-
-        try {
-            const res = await apiFetch('/sys/users/save', { method: 'POST', body: JSON.stringify(data) });
-            if(res.success) { showToast('Usuário salvo!'); closeModal(); loadUsers(); }
-            else { showToast(res.error || 'Erro', 'error'); }
-        } catch(err) { showToast('Erro de conexão', 'error'); }
-    };
-
-    // EXCLUIR
-    window.deleteUser = async (id) => {
-        if(!confirm('Tem certeza? Esta ação é irreversível.')) return;
-        const res = await apiFetch('/sys/users/delete', { method: 'POST', body: JSON.stringify({id}) });
-        if(res.success) { showToast('Usuário removido.'); loadUsers(); }
-        else { showToast(res.error, 'error'); }
-    }
-
+document.addEventListener('DOMContentLoaded', () => {
     loadUsers();
+    loadRoles();
+    loadCustomers(); // Carrega lista de clientes para o select
+});
+
+async function loadUsers() {
+    const tbody = document.getElementById('usersTableBody');
+    try {
+        const res = await apiFetch('/sys/users');
+        tbody.innerHTML = '';
+        res.data.forEach(u => {
+            const customerBadge = u.customer_id 
+                ? `<span class="px-2 py-1 bg-orange-50 text-orange-700 text-xs font-bold rounded-md border border-orange-100"><i class="fas fa-user-tag mr-1"></i> ${u.customer_name}</span>`
+                : `<span class="text-xs text-slate-400">Interno (Acesso Global)</span>`;
+
+            tbody.innerHTML += `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-6 py-4">
+                        <div class="font-bold text-slate-800">${u.name}</div>
+                        <div class="text-xs text-slate-500">${u.email}</div>
+                    </td>
+                    <td class="px-6 py-4"><span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-md">${u.role_name}</span></td>
+                    <td class="px-6 py-4">${customerBadge}</td>
+                    <td class="px-6 py-4 text-xs font-bold ${u.status === 'active' ? 'text-green-600' : 'text-red-600'}">${u.status}</td>
+                    <td class="px-6 py-4 text-right">
+                        <button onclick='editUser(${JSON.stringify(u)})' class="text-blue-600 mx-1"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteUser(${u.id})" class="text-red-600 mx-1"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        });
+    } catch (e) { console.error(e); }
+}
+
+async function loadRoles() {
+    try {
+        const res = await apiFetch('/sys/roles');
+        const sel = document.getElementById('userRole');
+        sel.innerHTML = '<option value="">Selecione...</option>';
+        res.data.forEach(r => sel.innerHTML += `<option value="${r.id}">${r.name}</option>`);
+    } catch(e) {}
+}
+
+async function loadCustomers() {
+    try {
+        // Assume que existe uma rota para listar clientes (ex: customers do SaaS)
+        // Se não tiver, precisa criar no CustomerController
+        const res = await apiFetch('/sys/customers'); 
+        const sel = document.getElementById('userCustomer');
+        // Mantém a opção padrão
+        sel.innerHTML = '<option value="">-- Usuário Interno (Vê Tudo) --</option>';
+        if(res.data) {
+            res.data.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+        }
+    } catch(e) {}
+}
+
+function openModal() {
+    document.getElementById('userForm').reset();
+    document.getElementById('userId').value = '';
+    document.getElementById('userModal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('userModal').classList.add('hidden');
+}
+
+function editUser(u) {
+    openModal();
+    document.getElementById('userId').value = u.id;
+    document.getElementById('userName').value = u.name;
+    document.getElementById('userEmail').value = u.email;
+    document.getElementById('userRole').value = u.role_id;
+    document.getElementById('userCustomer').value = u.customer_id; // Seleciona cliente
+    document.getElementById('userStatus').value = u.status;
+}
+
+document.getElementById('userForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    try {
+        await apiFetch('/sys/users/save', { method: 'POST', body: JSON.stringify(data) });
+        showToast('Salvo!');
+        closeModal();
+        loadUsers();
+    } catch (e) { showToast(e.message, 'error'); }
+});
+
+async function deleteUser(id) {
+    if(confirm('Excluir?')) {
+        await apiFetch('/sys/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
+        loadUsers();
+    }
+}
 </script>

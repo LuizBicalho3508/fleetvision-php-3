@@ -1,11 +1,11 @@
 <?php
-// db_explorer.php - Visualizador e Exportador de Banco de Dados (Corrigido)
+// db_explorer.php - Visualizador e Exportador de Banco de Dados (Blindado)
 
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 // --- 1. CONEXÃO ---
-$configFile = __DIR__ . '/config.php'; // Usa config.php criado na Fase 1
+$configFile = __DIR__ . '/config.php';
 
 if (file_exists($configFile)) {
     $config = require $configFile;
@@ -13,20 +13,18 @@ if (file_exists($configFile)) {
     try {
         $dsn = "pgsql:host={$db['host']};port={$db['port']};dbname={$db['name']}";
         $pdo = new PDO($dsn, $db['user'], $db['pass']);
-        $driver = 'pgsql';
         $dbName = $db['name'];
     } catch (Exception $e) {
         die("Erro de conexão (Config): " . $e->getMessage());
     }
 } else {
-    // Fallback Manual (Caso config.php não exista)
+    // Fallback Manual
     $host = '127.0.0.1';
     $dbName   = 'traccar';
     $user = 'traccar';
     $pass = 'traccar'; 
     try {
         $pdo = new PDO("pgsql:host=$host;dbname=$dbName", $user, $pass);
-        $driver = 'pgsql';
     } catch (PDOException $e) {
         die("Erro de conexão (Manual): " . $e->getMessage());
     }
@@ -39,24 +37,13 @@ function getTables($pdo) {
 }
 
 function getColumns($pdo, $table) {
-    $sql = "
-        SELECT 
-            c.column_name, 
-            c.data_type, 
-            c.character_maximum_length, 
-            c.is_nullable, 
-            c.column_default,
-            (SELECT 'PK' FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND kcu.table_name = c.table_name AND kcu.column_name = c.column_name LIMIT 1) as is_pk
-        FROM information_schema.columns c
-        WHERE c.table_name = '$table'
-        ORDER BY c.ordinal_position
-    ";
+    $sql = "SELECT column_name, data_type, character_maximum_length, is_nullable, column_default 
+            FROM information_schema.columns WHERE table_name = '$table' ORDER BY ordinal_position";
     return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function getData($pdo, $table) {
     try {
-        // Limita a 50 para não estourar memória
         return $pdo->query("SELECT * FROM \"$table\" LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { return []; }
 }
@@ -67,15 +54,30 @@ function getCount($pdo, $table) {
     } catch (Exception $e) { return 0; }
 }
 
-// *** FUNÇÃO DE CORREÇÃO PARA RESOURCES ***
+// *** FUNÇÃO DE CORREÇÃO SUPER BLINDADA ***
 function safeString($val) {
+    // 1. Se for NULL
+    if ($val === null) return 'NULL';
+    
+    // 2. Se for Recurso (Stream do Postgres)
     if (is_resource($val)) {
-        return stream_get_contents($val); // Lê o stream para string
+        // Tenta ler o conteúdo
+        $content = stream_get_contents($val);
+        if ($content === false) return 'RESOURCE_ERROR';
+        // Se a leitura funcionar, precisamos garantir que o ponteiro volte ao inicio se for usado de novo (opcional aqui)
+        return $content;
     }
+
+    // 3. Se for Array/Objeto
     if (is_array($val) || is_object($val)) {
         return json_encode($val);
     }
-    return $val ?? 'NULL';
+
+    // 4. Se for booleano
+    if (is_bool($val)) return $val ? 'true' : 'false';
+
+    // 5. Garantia final: Converte forçadamente para string
+    return (string)$val;
 }
 
 // --- 3. LÓGICA DE EXPORTAÇÃO (TXT) ---
@@ -99,22 +101,14 @@ if (isset($_GET['export']) && $_GET['export'] == 'txt') {
         // Colunas
         echo "ESTRUTURA:\n";
         $cols = getColumns($pdo, $t);
-        printf("%-20s %-15s %-10s %-20s %s\n", "COLUNA", "TIPO", "NULL", "DEFAULT", "CHAVE");
+        printf("%-20s %-15s %-10s %s\n", "COLUNA", "TIPO", "NULL", "DEFAULT");
         foreach ($cols as $c) {
-            $key = ($c['is_pk'] ?? '') ? 'PK' : '';
             $type = $c['data_type'] . ($c['character_maximum_length'] ? "({$c['character_maximum_length']})" : "");
-            
-            // Tratamento Seguro de Strings para metadados
-            $colName = safeString($c['column_name']);
-            $colType = safeString($type);
-            $colDef = safeString($c['column_default']);
-            
-            printf("%-20s %-15s %-10s %-20s %s\n", 
-                substr($colName, 0, 20), 
-                substr($colType, 0, 15), 
-                $c['is_nullable'], 
-                substr($colDef, 0, 20), 
-                $key
+            printf("%-20s %-15s %-10s %s\n", 
+                substr(safeString($c['column_name']), 0, 20), 
+                substr(safeString($type), 0, 15), 
+                safeString($c['is_nullable']), 
+                substr(safeString($c['column_default']), 0, 20)
             );
         }
         
@@ -127,11 +121,11 @@ if (isset($_GET['export']) && $_GET['export'] == 'txt') {
             foreach ($rows as $row) {
                 $line = [];
                 foreach ($row as $val) {
-                    // *** AQUI ESTAVA O ERRO ***
-                    // Usamos a função safeString para converter resource em string
+                    // *** USO DA NOVA FUNÇÃO BLINDADA ***
                     $valStr = safeString($val); 
                     
                     // Remove quebras de linha para o TXT ficar limpo
+                    // Agora $valStr é GARANTIDAMENTE string, então str_replace não falha
                     $cleanVal = str_replace(["\n", "\r"], " ", $valStr);
                     $line[] = mb_strimwidth($cleanVal, 0, 30, "...");
                 }
@@ -143,37 +137,32 @@ if (isset($_GET['export']) && $_GET['export'] == 'txt') {
         
         echo "\n" . str_repeat("=", 50) . "\n\n";
     }
-    
     exit;
 }
 
-// --- 4. INTERFACE HTML (Simplificada) ---
+// --- 4. INTERFACE HTML ---
 $tables = getTables($pdo);
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>DB Explorer - FleetVision</title>
+    <title>DB Explorer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-slate-100 text-slate-800 p-8">
-
     <div class="max-w-6xl mx-auto">
         <div class="flex justify-between items-center mb-8">
             <h1 class="text-3xl font-bold text-slate-800"><i class="fas fa-database text-blue-600"></i> DB Explorer</h1>
             <a href="?export=txt" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow transition">
-                <i class="fas fa-download mr-2"></i> Baixar Relatório TXT (Corrigido)
+                <i class="fas fa-download mr-2"></i> Baixar Relatório TXT
             </a>
         </div>
-
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <?php foreach ($tables as $t): 
-                 $count = getCount($pdo, $t);
-            ?>
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition">
-                    <div class="flex justify-between items-center mb-2">
+            <?php foreach ($tables as $t): $count = getCount($pdo, $t); ?>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <div class="flex justify-between items-center">
                         <h3 class="font-bold text-lg text-slate-700"><?php echo $t; ?></h3>
                         <span class="text-xs bg-slate-100 px-2 py-1 rounded text-slate-500 font-mono"><?php echo $count; ?> reg</span>
                     </div>
@@ -181,6 +170,5 @@ $tables = getTables($pdo);
             <?php endforeach; ?>
         </div>
     </div>
-
 </body>
 </html>

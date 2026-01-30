@@ -277,7 +277,13 @@ $router->add('GET',  'sys/admin/design',       'AdminDesignController', 'getSett
 $router->add('POST', 'sys/admin/design/save',  'AdminDesignController', 'save');
 $router->add('POST', 'sys/admin/design/reset', 'AdminDesignController', 'resetBackground');
 $router->add('GET',  'sys/admin/server',       'AdminServerController', 'status');
-// ...
+// --- ADMINISTRAÇÃO SERVIDOR ---
+// Rota da Página (View)
+$router->add('GET',  'admin_server',           'ViewController',        'generic', ['admin_server']);
+// Rota da API (Dados JSON) - ATENÇÃO: Use /sys/ aqui!
+$router->add('GET',  'sys/admin/server/stats', 'AdminServerController', 'stats');
+$router->add('GET',  'sys/admin/server',       'AdminServerController', 'index'); // Opcional
+
 // --- Financeiro Superadmin ---
 $router->add('GET',  'admin_financeiro',          'ViewController',           'generic', ['admin_financeiro']);
 $router->add('GET',  'sys/admin/financial',       'AdminFinancialController', 'index');

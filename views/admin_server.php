@@ -103,14 +103,19 @@
 
 <script>
     async function updateMetrics() {
+        if (typeof apiFetch !== 'function') {
+            console.warn('apiFetch ainda não carregado. Aguardando...');
+            return;
+        }
+
         try {
-            // Chama a nova API
-            const res = await apiFetch('/api/admin/server/stats');
+            // CORREÇÃO: Mudamos de /api/ para /sys/ para evitar o proxy do Traccar
+            const res = await apiFetch('/sys/admin/server/stats', { silent: true });
             
-            if (!res) return; // Erro de conexão tratado pelo wrapper
+            if (!res) return;
 
             // Uptime
-            document.getElementById('val-uptime').innerText = res.uptime;
+            document.getElementById('val-uptime').innerText = res.uptime || '--';
 
             // Barras e Textos
             updateBar('cpu', res.cpu, '%');
@@ -124,8 +129,8 @@
             document.getElementById('val-disk-total').innerText = res.disk_total;
 
             // Serviços
-            updateService('traccar', res.services.traccar);
-            updateService('postgres', res.services.postgres);
+            updateService('traccar', res.services?.traccar);
+            updateService('postgres', res.services?.postgres);
 
         } catch(e) {
             console.error("Erro no Monitoramento:", e);
@@ -138,18 +143,21 @@
         
         val = parseFloat(val) || 0;
         
-        bar.style.width = val + '%';
-        txt.innerText = val + suffix;
+        if(bar) bar.style.width = val + '%';
+        if(txt) txt.innerText = val + suffix;
 
-        // Cores Dinâmicas
-        bar.className = 'h-full transition-all duration-1000 rounded-full ';
-        if(val < 60) bar.className += 'bg-green-500';
-        else if(val < 85) bar.className += 'bg-yellow-500';
-        else bar.className += 'bg-red-500';
+        if(bar) {
+            bar.className = 'h-full transition-all duration-1000 rounded-full ';
+            if(val < 60) bar.className += 'bg-green-500';
+            else if(val < 85) bar.className += 'bg-yellow-500';
+            else bar.className += 'bg-red-500';
+        }
     }
 
     function updateService(id, isOnline) {
         const el = document.getElementById('svc-'+id);
+        if(!el) return;
+        
         if(isOnline) {
             el.className = 'px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200 flex items-center gap-2 transition-all';
             el.innerHTML = '<span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online';
@@ -159,7 +167,9 @@
         }
     }
 
-    // Atualiza a cada 5 segundos
-    updateMetrics();
-    setInterval(updateMetrics, 5000);
+    // Aguarda o DOM estar pronto e inicia
+    document.addEventListener('DOMContentLoaded', () => {
+        updateMetrics();
+        setInterval(updateMetrics, 5000);
+    });
 </script>
