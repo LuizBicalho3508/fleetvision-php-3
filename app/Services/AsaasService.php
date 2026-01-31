@@ -5,48 +5,74 @@ class AsaasService {
     private $apiKey;
     private $baseUrl;
 
-    public function __construct() {
-        // Em produção, mova isso para um arquivo de configuração ou .env
-        $this->apiKey = '$aact_...SEU_API_KEY_DO_ASAAS...'; 
+    public function __construct($apiKey, $environment = 'prod') {
+        $this->apiKey = $apiKey;
+        $this->baseUrl = ($environment === 'sandbox') 
+            ? 'https://sandbox.asaas.com/api/v3' 
+            : 'https://www.asaas.com/api/v3';
+    }
+
+    private function request($endpoint, $method = 'GET', $data = null) {
+        $curl = curl_init();
         
-        // Use 'https://sandbox.asaas.com/api/v3' para testes
-        // Use 'https://www.asaas.com/api/v3' para produção
-        $this->baseUrl = 'https://sandbox.asaas.com/api/v3'; 
-    }
-
-    public function createPayment($customerId, $value, $dueDate, $description) {
-        $data = [
-            'customer' => $customerId,
-            'billingType' => 'UNDEFINED', // Deixa o cliente escolher (Pix/Boleto) no link
-            'value' => $value,
-            'dueDate' => $dueDate,
-            'description' => $description,
-            'postalService' => false // Não enviar carta via correio
-        ];
-
-        return $this->post('/payments', $data);
-    }
-
-    private function post($endpoint, $data) {
-        $ch = curl_init($this->baseUrl . $endpoint);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'access_token: ' . $this->apiKey
-        ]);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        $json = json_decode($response, true);
-
-        if ($httpCode >= 400) {
-            throw new \Exception($json['errors'][0]['description'] ?? 'Erro Asaas: ' . $httpCode);
+        // Monta URL com Query String se for GET e tiver dados
+        $url = $this->baseUrl . $endpoint;
+        if ($method === 'GET' && is_array($data)) {
+            $url .= '?' . http_build_query($data);
+            $data = null; // Limpa para não enviar no body
         }
 
-        return $json;
+        $headers = [
+            'Content-Type: application/json',
+            'access_token: ' . $this->apiKey
+        ];
+
+        $options = [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headers,
+        ];
+
+        if ($data) {
+            $options[CURLOPT_POSTFIELDS] = json_encode($data);
+        }
+
+        curl_setopt_array($curl, $options);
+        $response = curl_exec($curl);
+        curl_close($curl);
+
+        return json_decode($response, true);
+    }
+
+    // --- MÉTODOS FINANCEIROS ---
+
+    public function getBalance() {
+        return $this->request('/finance/balance');
+    }
+
+    /**
+     * Busca pagamentos com filtros (Status, Data, Cliente)
+     */
+    public function getPayments(array $filters = []) {
+        // Filtros comuns: status, dueDate, customer, offset, limit
+        return $this->request('/payments', 'GET', $filters);
+    }
+
+    /**
+     * Busca clientes no Asaas por nome ou CPF/CNPJ
+     */
+    public function searchCustomers($query) {
+        return $this->request('/customers', 'GET', [
+            'name' => $query,
+            'limit' => 20
+        ]);
+    }
+
+    public function getCustomerById($id) {
+        return $this->request("/customers/$id");
     }
 }
+?>

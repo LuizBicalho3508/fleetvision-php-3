@@ -7,9 +7,10 @@ use DateTime;
 
 class CustomerController extends ApiController {
 
-    // 1. LISTA CLIENTES (Com totais financeiros e veículos ativos)
-    public function index() {
+    // 1. LISTA CLIENTES (Renomeado de index para list para bater com a rota API)
+    public function list() {
         try {
+            if (session_status() === PHP_SESSION_NONE) session_start();
             $tenantId = $_SESSION['tenant_id'];
 
             // Subquery para contar veículos ativos
@@ -40,6 +41,7 @@ class CustomerController extends ApiController {
 
     private function save($isUpdate) {
         try {
+            if (session_status() === PHP_SESSION_NONE) session_start();
             $data = json_decode(file_get_contents('php://input'), true);
             $tenantId = $_SESSION['tenant_id'];
 
@@ -101,6 +103,7 @@ class CustomerController extends ApiController {
     // 4. LISTAR VEÍCULOS DO CLIENTE (Modal)
     public function getVehicles() {
         try {
+            if (session_status() === PHP_SESSION_NONE) session_start();
             $id = $_GET['id'];
             $tenantId = $_SESSION['tenant_id'];
             
@@ -120,6 +123,7 @@ class CustomerController extends ApiController {
     // 5. CALCULAR FATURA PROPORCIONAL (Pro-Rata)
     public function getInvoicePreview() {
         try {
+            if (session_status() === PHP_SESSION_NONE) session_start();
             $customerId = $_GET['id'];
             $tenantId = $_SESSION['tenant_id'];
 
@@ -179,3 +183,4 @@ class CustomerController extends ApiController {
         }
     }
 }
+?>

@@ -1,151 +1,183 @@
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <div class="p-6 space-y-6">
-
-    <div class="flex flex-col md:flex-row justify-between items-end mb-2">
+    <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-2xl font-bold text-slate-800">Visão Geral</h1>
-            <p class="text-sm text-slate-500">Monitoramento em tempo real da operação.</p>
+            <h2 class="text-2xl font-bold text-slate-800" id="dashTitle">Painel de Controle</h2>
+            <p class="text-sm text-slate-500" id="dashSubtitle">Carregando dados...</p>
         </div>
-        <div class="text-right">
-            <span id="last-update" class="text-xs text-slate-400 font-mono">Atualizado: --:--</span>
+        <div class="flex gap-2">
+            <button onclick="loadKpis()" class="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded-lg text-sm font-bold transition">
+                <i class="fas fa-sync-alt mr-2"></i> Atualizar
+            </button>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div id="kpiGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-32 animate-pulse"></div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-32 animate-pulse"></div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-32 animate-pulse"></div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-32 animate-pulse"></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group hover:shadow-md transition">
-            <div class="absolute right-0 top-0 w-24 h-24 bg-blue-500 rounded-bl-full opacity-10 group-hover:scale-110 transition"></div>
-            <div class="relative z-10">
-                <div class="flex items-center gap-3 mb-2">
-                    <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-truck"></i></div>
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Frota Total</span>
-                </div>
-                <h3 class="text-4xl font-bold text-slate-800" id="kpi-total">-</h3>
-                <p class="text-xs text-slate-400 mt-1">Veículos cadastrados</p>
+        <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 class="font-bold text-slate-700 mb-4" id="chartTitle">Análise</h3>
+            <div class="h-64">
+                <canvas id="mainChart"></canvas>
             </div>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group hover:shadow-md transition">
-            <div class="absolute right-0 top-0 w-24 h-24 bg-green-500 rounded-bl-full opacity-10 group-hover:scale-110 transition"></div>
-            <div class="relative z-10">
-                <div class="flex items-center gap-3 mb-2">
-                    <div class="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center"><i class="fas fa-wifi"></i></div>
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Online Agora</span>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 class="font-bold text-slate-700 mb-4" id="widgetTitle">Ações Rápidas</h3>
+            <div id="widgetContent" class="space-y-3">
                 </div>
-                <div class="flex items-end gap-2">
-                    <h3 class="text-4xl font-bold text-green-600" id="kpi-online">-</h3>
-                </div>
-                <div class="w-full bg-slate-100 h-1.5 mt-3 rounded-full overflow-hidden">
-                    <div id="bar-online" class="h-full bg-green-500 transition-all duration-1000" style="width: 0%"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group hover:shadow-md transition">
-            <div class="absolute right-0 top-0 w-24 h-24 bg-orange-500 rounded-bl-full opacity-10 group-hover:scale-110 transition"></div>
-            <div class="relative z-10">
-                <div class="flex items-center gap-3 mb-2">
-                    <div class="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center"><i class="fas fa-tachometer-alt"></i></div>
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Em Movimento</span>
-                </div>
-                <h3 class="text-4xl font-bold text-orange-600" id="kpi-moving">-</h3>
-                <p class="text-xs text-slate-400 mt-1">Veículos rodando</p>
-            </div>
         </div>
     </div>
-
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col">
-        <div class="p-5 border-b border-slate-100 flex justify-between items-center">
-            <h3 class="text-sm font-bold text-slate-700">Frota em Tempo Real</h3>
-            <a href="frota" class="text-xs text-blue-600 font-bold hover:underline">Ver todos</a>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-                    <tr>
-                        <th class="px-6 py-3">Veículo</th>
-                        <th class="px-6 py-3">Status</th>
-                        <th class="px-6 py-3">Velocidade</th>
-                        <th class="px-6 py-3 text-right">Última Conexão</th>
-                    </tr>
-                </thead>
-                <tbody id="fleet-list" class="divide-y divide-slate-100">
-                    <tr><td colspan="4" class="p-6 text-center text-slate-400"><i class="fas fa-circle-notch fa-spin mr-2"></i> Carregando dados...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
 </div>
 
 <script>
-    async function loadDashboard() {
-        try {
-            // CORREÇÃO: Usando rotas /sys/ definidas no index.php
-            const kpis = await apiFetch('/sys/dashboard/kpis');
-            
-            if (kpis && !kpis.error) {
-                // Atualiza KPIs
-                const total = parseInt(kpis.total_vehicles) || 0;
-                const online = parseInt(kpis.online) || 0;
-                const moving = parseInt(kpis.moving) || 0;
+let mainChartInstance = null;
 
-                // Animação simples dos números (pode ser melhorada)
-                document.getElementById('kpi-total').innerText = total;
-                document.getElementById('kpi-online').innerText = online;
-                document.getElementById('kpi-moving').innerText = moving;
-                
-                // Barra de progresso
-                const pct = total > 0 ? Math.round((online / total) * 100) : 0;
-                document.getElementById('bar-online').style.width = `${pct}%`;
-            }
+document.addEventListener('DOMContentLoaded', () => {
+    loadKpis();
+});
 
-            // Carrega Lista da Frota
-            const fleet = await apiFetch('/sys/dashboard/data'); // Rota corrigida
-            const tbody = document.getElementById('fleet-list');
-            
-            if (fleet && Array.isArray(fleet) && fleet.length > 0) {
-                // Limita a 5 itens no dashboard para não poluir
-                const previewFleet = fleet.slice(0, 5);
-                
-                tbody.innerHTML = previewFleet.map(v => `
-                    <tr class="hover:bg-slate-50 transition">
-                        <td class="px-6 py-4 font-medium text-slate-700">
-                            <div class="flex items-center gap-2">
-                                <div class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-slate-500">
-                                    <i class="fas fa-car"></i>
-                                </div>
-                                <div>
-                                    ${v.plate || 'S/ Placa'} 
-                                    <span class="text-xs text-slate-400 block font-normal">${v.name || 'Sem Nome'}</span>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4">
-                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${v.speed > 0 ? 'bg-green-100 text-green-700' : (v.online ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600')}">
-                                <span class="w-1.5 h-1.5 rounded-full ${v.speed > 0 ? 'bg-green-500' : (v.online ? 'bg-blue-500' : 'bg-slate-400')}"></span>
-                                ${v.speed > 0 ? 'Em Movimento' : (v.online ? 'Parado (Online)' : 'Offline')}
-                            </span>
-                        </td>
-                        <td class="px-6 py-4 text-slate-600 font-mono">${Math.round(v.speed || 0)} km/h</td>
-                        <td class="px-6 py-4 text-right text-xs text-slate-500 font-mono">
-                            ${v.lastupdate ? new Date(v.lastupdate).toLocaleString('pt-BR') : '-'}
-                        </td>
-                    </tr>
-                `).join('');
-                document.getElementById('last-update').innerText = 'Atualizado: ' + new Date().toLocaleTimeString('pt-BR');
-            } else {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400">Nenhum veículo reportando dados no momento.</td></tr>';
-            }
-        } catch (e) { 
-            console.error("Erro Dashboard:", e);
-            document.getElementById('fleet-list').innerHTML = `<tr><td colspan="4" class="p-4 text-center text-red-400">Erro ao carregar dados. <br><small>${e.message}</small></td></tr>`;
-        }
+async function loadKpis() {
+    try {
+        const res = await apiFetch('/sys/dashboard/kpis');
+        renderDashboard(res);
+    } catch (e) {
+        showToast('Erro ao carregar dashboard: ' + e.message, 'error');
+    }
+}
+
+function renderDashboard(data) {
+    // 1. Configura Textos Baseado no Tipo
+    const titles = {
+        'superadmin': ['Visão Global (God Mode)', 'Monitoramento de Infraestrutura e Tenants'],
+        'tenant_admin': ['Gestão Empresarial', 'Visão geral do seu negócio de rastreamento'],
+        'client': ['Gestão de Frota', 'Acompanhe sua operação em tempo real']
+    };
+    
+    const texts = titles[data.view_type] || ['Dashboard', 'Bem-vindo'];
+    document.getElementById('dashTitle').innerText = texts[0];
+    document.getElementById('dashSubtitle').innerText = texts[1];
+
+    // 2. Renderiza Cards
+    const grid = document.getElementById('kpiGrid');
+    grid.innerHTML = '';
+
+    data.cards.forEach(card => {
+        // Cores personalizadas para Tailwind
+        const colors = {
+            'blue': 'bg-blue-50 text-blue-600',
+            'green': 'bg-green-50 text-green-600',
+            'red': 'bg-red-50 text-red-600',
+            'orange': 'bg-orange-50 text-orange-600',
+            'purple': 'bg-purple-50 text-purple-600',
+            'gray': 'bg-slate-100 text-slate-600'
+        };
+        const colorClass = colors[card.color] || colors['blue'];
+
+        const html = `
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition group">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">${card.title}</p>
+                        <h3 class="text-2xl font-bold text-slate-800">${card.value}</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl ${colorClass} group-hover:scale-110 transition">
+                        <i class="fas ${card.icon}"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+        grid.insertAdjacentHTML('beforeend', html);
+    });
+
+    // 3. Renderiza Gráfico
+    document.getElementById('chartTitle').innerText = data.chart_label;
+    renderChart(data.chart_label, data.chart_data);
+
+    // 4. Renderiza Widget Lateral (Ações Rápidas)
+    renderWidget(data.view_type);
+}
+
+function renderWidget(type) {
+    const box = document.getElementById('widgetContent');
+    box.innerHTML = '';
+    
+    let actions = [];
+
+    if (type === 'superadmin') {
+        document.getElementById('widgetTitle').innerText = 'Administração do Servidor';
+        actions = [
+            { label: 'Gerenciar Tenants', link: '/sys/admin/tenants', icon: 'fa-globe', color: 'bg-slate-800 text-white' },
+            { label: 'Reiniciar Serviços', link: '#', icon: 'fa-power-off', color: 'bg-red-600 text-white' },
+            { label: 'Logs de Erro', link: '/sys/admin/logs', icon: 'fa-bug', color: 'bg-slate-100 text-slate-600' }
+        ];
+    } else if (type === 'tenant_admin') {
+        document.getElementById('widgetTitle').innerText = 'Atalhos de Gestão';
+        actions = [
+            { label: 'Novo Cliente', link: '/clientes', icon: 'fa-user-plus', color: 'bg-blue-600 text-white' },
+            { label: 'Cadastrar Veículo', link: '/frota', icon: 'fa-car', color: 'bg-green-600 text-white' },
+            { label: 'Enviar Cobrança', link: '/financeiro', icon: 'fa-file-invoice-dollar', color: 'bg-slate-100 text-slate-600' }
+        ];
+    } else {
+        document.getElementById('widgetTitle').innerText = 'Operação';
+        actions = [
+            { label: 'Ver no Mapa', link: '/mapa', icon: 'fa-map-marked-alt', color: 'bg-blue-600 text-white' },
+            { label: 'Relatório de Rota', link: '/relatorios', icon: 'fa-route', color: 'bg-slate-100 text-slate-600' },
+            { label: 'Contatar Suporte', link: '#', icon: 'fa-headset', color: 'bg-slate-100 text-slate-600' }
+        ];
     }
 
-    // Inicia e agenda atualização
-    loadDashboard();
+    actions.forEach(act => {
+        const html = `
+            <a href="${act.link}" class="flex items-center gap-3 p-3 rounded-xl transition hover:opacity-90 ${act.color}">
+                <i class="fas ${act.icon} w-6 text-center"></i>
+                <span class="font-medium text-sm">${act.label}</span>
+            </a>
+        `;
+        box.insertAdjacentHTML('beforeend', html);
+    });
+}
+
+function renderChart(label, dataPoints) {
+    const ctx = document.getElementById('mainChart').getContext('2d');
     
-    // Armazena intervalo para limpar se trocar de página (se for SPA)
-    if (window.dashboardInterval) clearInterval(window.dashboardInterval);
-    window.dashboardInterval = setInterval(loadDashboard, 15000); // 15 segundos
+    if (mainChartInstance) mainChartInstance.destroy();
+
+    mainChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'], // Labels fixas por enquanto
+            datasets: [{
+                label: label,
+                data: dataPoints,
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                borderWidth: 2,
+                tension: 0.4,
+                fill: true,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#2563eb',
+                pointRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { borderDash: [2, 4] } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
 </script>
